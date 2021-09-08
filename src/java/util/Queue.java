@@ -146,7 +146,9 @@ public interface Queue<E> extends Collection<E> {
      * Inserts the specified element into this queue if it is possible to do so
      * immediately without violating capacity restrictions, returning
      * {@code true} upon success and throwing an {@code IllegalStateException}
-     * if no space is currently available.
+     * if no space is currently available.<br/>
+     * 如果可以在不违反容量限制的情况下立即将指定元素插入此队列，则在成功时返回 {@code true};
+     * 如果当前没有可用空间，则抛出 {@link IllegalStateException}。
      *
      * @param e the element to add
      * @return {@code true} (as specified by {@link Collection#add})
@@ -193,6 +195,7 @@ public interface Queue<E> extends Collection<E> {
     /**
      * Retrieves and removes the head of this queue,
      * or returns {@code null} if this queue is empty.
+     * 返回并删除头元素，队列为空时返回 {@code null}
      *
      * @return the head of this queue, or {@code null} if this queue is empty
      */
@@ -201,7 +204,9 @@ public interface Queue<E> extends Collection<E> {
     /**
      * Retrieves, but does not remove, the head of this queue.  This method
      * differs from {@link #peek peek} only in that it throws an exception
-     * if this queue is empty.
+     * if this queue is empty.<br/>
+     * 返回头元素，但不删除该元素。
+     * 与 {@link #peek peek} 的不同之处在于，如果队列为空，则抛出 {@link NoSuchElementException} 异常
      *
      * @return the head of this queue
      * @throws NoSuchElementException if this queue is empty
@@ -211,6 +216,7 @@ public interface Queue<E> extends Collection<E> {
     /**
      * Retrieves, but does not remove, the head of this queue,
      * or returns {@code null} if this queue is empty.
+     * 返回头元素，但不删除该元素。如果队列为空，则返回 null。
      *
      * @return the head of this queue, or {@code null} if this queue is empty
      */

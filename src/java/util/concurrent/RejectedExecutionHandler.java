@@ -37,7 +37,7 @@ package java.util.concurrent;
 
 /**
  * A handler for tasks that cannot be executed by a {@link ThreadPoolExecutor}.
- *
+ * 线程池任务拒绝策略执行器
  * @since 1.5
  * @author Doug Lea
  */

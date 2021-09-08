@@ -43,15 +43,24 @@ import java.util.Queue;
  * that wait for the queue to become non-empty when retrieving an
  * element, and wait for space to become available in the queue when
  * storing an element.
+ * <p>阻塞队列，支持在获取元素时等待队列变为非空，插入元素时等待队变为空；</p>
  *
  * <p>{@code BlockingQueue} methods come in four forms, with different ways
  * of handling operations that cannot be satisfied immediately, but may be
  * satisfied at some point in the future:
+ * <p>{@code BlockingQueue} 的基本操作有四种形式，主要在于它们对这些类似 不能立即被满足，但在将来的某个时候可能会满足 的操作的处理方式不同：</p>
+ *
  * one throws an exception, the second returns a special value (either
  * {@code null} or {@code false}, depending on the operation), the third
  * blocks the current thread indefinitely until the operation can succeed,
  * and the fourth blocks for only a given maximum time limit before giving
  * up.  These methods are summarized in the following table:
+ * <ul>
+ *     <li>条件不满足时抛异常；</li>
+ *     <li>条件不满足时返回特殊值: {@code null} 或者 {@code false}，具体返回哪种与操作相关；</li>
+ *     <li>条件不满足时无限期地阻塞当前线程，直到操作成功；</li>
+ *     <li>条件不满足时如果超过特定时间，则放弃。</li>
+ * </ul>
  *
  * <table BORDER CELLPADDING=3 CELLSPACING=1>
  * <caption>Summary of BlockingQueue methods</caption>
@@ -90,12 +99,17 @@ import java.util.Queue;
  * to {@code add}, {@code put} or {@code offer} a {@code null}.  A
  * {@code null} is used as a sentinel value to indicate failure of
  * {@code poll} operations.
+ * <p>{@code BlockingQueue} 不接受 {@code null} 元素。{@code add}、{@code put}或{@code offer} 方法在操作 {@code null} 时
+ * 会抛出 {@code NullPointerException}。{@code null} 用作指示 {@code poll} 操作失败的标记值。</p>
  *
  * <p>A {@code BlockingQueue} may be capacity bounded. At any given
  * time it may have a {@code remainingCapacity} beyond which no
  * additional elements can be {@code put} without blocking.
  * A {@code BlockingQueue} without any intrinsic capacity constraints always
  * reports a remaining capacity of {@code Integer.MAX_VALUE}.
+ * {@code BlockingQueue} 可能是有界的。在任何给定的时间，它可能有一个剩余容量 {@code remainingCapacity}，
+ * <p>如果剩余容量为0，则再插入元素时需阻塞至有空间放置该元素。
+ * 一般，没有任何内在容量约束的 {@code BlockingQueue}，容量大小初始值为 {@code Integer.MAX_VALUE}。</p>
  *
  * <p>{@code BlockingQueue} implementations are designed to be used
  * primarily for producer-consumer queues, but additionally support
@@ -104,6 +118,8 @@ import java.util.Queue;
  * {@code remove(x)}. However, such operations are in general
  * <em>not</em> performed very efficiently, and are intended for only
  * occasional use, such as when a queued message is cancelled.
+ * {@code BlockingQueue} 的实现类主要用于生产者-消费者队列，但同事也支持 {@link java.util.Collection} 接口的操作。
+ * 例如，可以使用 {@code remove（x）} 从队列中删除任意元素。然而，此类操作通常不会非常有效地执行，仅用于偶尔使用，例如当取消排队消息时。
  *
  * <p>{@code BlockingQueue} implementations are thread-safe.  All
  * queuing methods achieve their effects atomically using internal
@@ -204,7 +220,10 @@ public interface BlockingQueue<E> extends Queue<E> {
      * {@code true} upon success and {@code false} if no space is currently
      * available.  When using a capacity-restricted queue, this method is
      * generally preferable to {@link #add}, which can fail to insert an
-     * element only by throwing an exception.
+     * element only by throwing an exception.<br/>
+     * 如果可以在不违反容量限制的情况下立即将指定元素插入此队列，则在成功时返回 {@code true}，
+     * 如果当前没有可用空间，则返回{@code false}。
+     * 当使用有界队列时，此方法通常比 {@link #add} 更可取，后者只能通过抛出异常才能插入元素。
      *
      * @param e the element to add
      * @return {@code true} if the element was added to this queue, else
@@ -295,9 +314,12 @@ public interface BlockingQueue<E> extends Queue<E> {
      * Removes a single instance of the specified element from this queue,
      * if it is present.  More formally, removes an element {@code e} such
      * that {@code o.equals(e)}, if this queue contains one or more such
-     * elements.
+     * elements.<br/>
+     * 如果队列中存在该元素，则移除它。准确来说，如果队列中存在多个 {@code o.equals(e)} 的元素，则移除第一个找到的实例。<br/>
+     *
      * Returns {@code true} if this queue contained the specified element
-     * (or equivalently, if this queue changed as a result of the call).
+     * (or equivalently, if this queue changed as a result of the call).<br/>
+     * 如果存在这样的元素，则返回 true。
      *
      * @param o element to be removed from this queue, if present
      * @return {@code true} if this queue changed as a result of the call
