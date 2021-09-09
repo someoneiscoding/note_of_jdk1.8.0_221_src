@@ -577,7 +577,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
 
     /**
      * Counter for completed tasks. Updated only on termination of
-     * worker threads. Accessed only under mainLock.
+     * worker threads. Accessed only under mainLock.<br/>
+     * 已完成任务的大致数量。只有线程销毁时才会将每个 worker 的 {@link Worker#completedTasks} += 到该字段，即 completedTaskCount += {@link Worker#completedTasks}。
+     * 只有在持有 mainLock 时才可以访问该字段。
      */
     private long completedTaskCount;
 
@@ -728,11 +730,11 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             runWorker(this);
         }
 
-        // Lock methods
-        //
-        // The value 0 represents the unlocked state.
-        // The value 1 represents the locked state.
-
+        /**
+         * The value 0 represents the unlocked state.
+         * The value 1 represents the locked state.
+         * @return 是否持有排他锁
+         */
         protected boolean isHeldExclusively() {
             return getState() != 0;
         }
@@ -774,9 +776,11 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
     /**
      * Transitions runState to given target, or leaves it alone if
      * already at least the given target.
+     * 将线程池更改为指定状态，如果已达到指定状态，则 do nothing。
      *
      * @param targetState the desired state, either SHUTDOWN or STOP
      *        (but not TIDYING or TERMINATED -- use tryTerminate for that)
+     *        targetState 只能是 SHUTDOWN 或者 STOP。如果要将线程池置为 TIDYING 或 TERMINATED，应该尝试使用 tryTerminate()
      */
     private void advanceRunState(int targetState) {
         for (;;) {
@@ -796,7 +800,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * termination possible -- reducing worker count or removing tasks
      * from the queue during shutdown. The method is non-private to
      * allow access from ScheduledThreadPoolExecutor.<br/>
-     * 如果当前线程池(处于{@link #SHUTDOWN}且任务队列为空) 或者 (处于 {@link #STOP}状态且线程池无工作线程)，
+     * 如果当前线程池(处于 {@link #SHUTDOWN} 且任务队列为空) 或者 (处于 {@link #STOP} 状态且线程池无工作线程)，
      * 则将线程池状态转为 {@link #TERMINATED}
      */
     final void tryTerminate() {
@@ -1116,20 +1120,28 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * possibly terminates the pool or replaces the worker if either
      * it exited due to user task exception or if fewer than
      * corePoolSize workers are running or queue is non-empty but
-     * there are no workers.
+     * there are no workers.<br/>
+     * 对任务队列处理完成时的 Worker 和 因用户任务异常而中断的 Worker 做扫尾工作。
+     * 如果是因任务异常而中断退出的 Worker，则不更改 ctl workerCount，先重新计算线程池完成总任务数，
+     * 并将该 worker 从 worker Set 中移除。然后尝试关闭线程池，如果满足条件的话。
+     * 如果当前线程池处于 RUNNING 或者 SHUTDOWN 状态，，且 worker 因用户异常退出，则新增非核心线程；
+     * 如果 worker 正常处理完任务队列，则判断当前池内线程数量是否满足最低数量(如果核心线程不允许超时销毁，则 min=corePoolSize，否则 min=0。
+     * 如果此时工作队列不为空，则 min=1。如果当前 workerCount < min, 则创建非核心线程。)
      *
      * @param w the worker
-     * @param completedAbruptly if the worker died due to user exception
+     * @param completedAbruptly if the worker died due to user exception 如果因用户任务异常退出，则为 true，否则为 false
      */
     private void processWorkerExit(Worker w, boolean completedAbruptly) {
-        if (completedAbruptly) // If abrupt, then workerCount wasn't adjusted
+        // If abrupt, then workerCount wasn't adjusted
+        // 如果是因用户异常退出，则不调整线程数量，，因为任务可能还没处理完，需重新创建启动线程继续处理任务队列
+        if (completedAbruptly)
             decrementWorkerCount();
 
         // 获取主锁
         final ReentrantLock mainLock = this.mainLock;
         mainLock.lock();
         try {
-            // 完成任务总数 + w.completedTasks;
+            // 线程池完成任务总数 + w.completedTasks;
             completedTaskCount += w.completedTasks;
             // 从线程 Set 中移除该线程
             workers.remove(w);
@@ -1137,6 +1149,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             mainLock.unlock();
         }
 
+        // 尝试终止线程池，如果满足条件的话：当前线程池(处于 {@link #SHUTDOWN} 且任务队列为空) 或者 (处于 {@link #STOP} 状态且线程池无工作线程)
         tryTerminate();
 
         int c = ctl.get();
@@ -1291,7 +1304,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         w.firstTask = null;
         w.unlock();
         // allow interrupts
-        // 是否允许突然中断，默认true；
+        // 正常处理完成 || 突然中断，默认true；
         boolean completedAbruptly = true;
         try {
             // getTask() 中判断是否满足超时销毁条件：满足的话，当前活跃线程数 -1，并返回 null
@@ -1308,6 +1321,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                     !wt.isInterrupted())
                     wt.interrupt();
                 try {
+                    // 钩子函数，子类 override
                     beforeExecute(wt, task);
                     Throwable thrown = null;
                     try {
@@ -1319,17 +1333,19 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                     } catch (Throwable x) {
                         thrown = x; throw new Error(x);
                     } finally {
+                        // 正常执行或者抛异常，都会执行该 钩子函数
                         afterExecute(task, thrown);
                     }
                 } finally {
                     task = null;
-                    // 当前线程完成任务数 +1
+                    // 当前线程完成任务数 +1，无论任务是否被正确处理完成★
                     w.completedTasks++;
                     w.unlock();
                 }
             }
             completedAbruptly = false;
         } finally {
+            // 任务队列处理完 false || 用户任务处理异常 true
             processWorkerExit(w, completedAbruptly);
         }
     }
@@ -2046,9 +2062,11 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * Returns the approximate total number of tasks that have ever been
      * scheduled for execution. Because the states of tasks and
      * threads may change dynamically during computation, the returned
-     * value is only an approximation.
+     * value is only an approximation.<br/>
+     * 返回已计划执行的任务大致总数(基本等于已入队总数，非 workQueue.size())。
+     * 由于任务和线程的状态在计算过程中可能会动态变化，因此返回的值只是一个近似值。
      *
-     * @return the number of tasks
+     * @return the number of tasks = completedTaskCount + completedTasks/(per worker) + workQueue.size()
      */
     public long getTaskCount() {
         final ReentrantLock mainLock = this.mainLock;
@@ -2071,7 +2089,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * completed execution. Because the states of tasks and threads
      * may change dynamically during computation, the returned value
      * is only an approximation, but one that does not ever decrease
-     * across successive calls.
+     * across successive calls.<br/>
+     * 返回已完成执行的任务的大致总数。
+     * 由于任务和线程的状态在计算过程中可能会动态变化，因此返回的值只是一个近似值，但在连续调用中不会减少。
      *
      * @return the number of tasks
      */
@@ -2132,12 +2152,14 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * given thread.  This method is invoked by thread {@code t} that
      * will execute task {@code r}, and may be used to re-initialize
      * ThreadLocals, or to perform logging.<br/>
-     * 在给定线程中执行给定Runnable之前调用的方法。
-     * 此方法由执行任务 {@code r} 的线程 {@code t} 调用，可用于重新初始化 ThreadLocals 或执行日志记录。
+     * 在给定线程中执行给定 Runnable 之前调用的方法。
+     * 此方法由执行任务 {@code r} 的线程 {@code t} 调用，可用于重新初始化 ThreadLocals 或执行日志记录。<br/>
+     *
      * <p>This implementation does nothing, but may be customized in
      * subclasses. Note: To properly nest multiple overridings, subclasses
      * should generally invoke {@code super.beforeExecute} at the end of
-     * this method. 预留空方法：为了正确嵌套多个重写，子类通常应该在这个方法的末尾调用 {@code super.beforeExecute} 。
+     * this method.<br/>
+     * 预留空方法：为了正确嵌套多个重写，子类通常应该在这个方法的末尾调用 {@code super.beforeExecute} 。
      *
      * @param t the thread that will run task {@code r}
      * @param r the task that will be executed
