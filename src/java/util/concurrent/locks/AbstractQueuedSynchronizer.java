@@ -142,13 +142,18 @@ import sun.misc.Unsafe;
  * must be internally thread-safe, and should in general be short and
  * not block. Defining these methods is the <em>only</em> supported
  * means of using this class. All other methods are declared
- * {@code final} because they cannot be independently varied.
+ * {@code final} because they cannot be independently varied.<br/>
+ * 默认情况下，这些方法都会抛出 {@link UnsupportedOperationException}。
+ * 这些方法的实现必须是内部线程安全的，并且通常应该是简短的，而不是一大段代码块。
+ * 定义这些方法是使用此类的唯一受支持的方法。其他的方法都声明为 {@code final}，因为它们不能子类覆盖实现。
  *
  * <p>You may also find the inherited methods from {@link
  * AbstractOwnableSynchronizer} useful to keep track of the thread
  * owning an exclusive synchronizer.  You are encouraged to use them
  * -- this enables monitoring and diagnostic tools to assist users in
- * determining which threads hold locks.
+ * determining which threads hold locks.<br/>
+ * 你可能发现从 {@link AbstractOwnableSynchronizer} 继承的方法对于跟踪拥有独占同步器的线程非常有用。
+ * 我们鼓励您使用它们——这使监视和诊断工具能够帮助用户确定哪些线程持有锁。
  *
  * <p>Even though this class is based on an internal FIFO queue, it
  * does not automatically enforce FIFO acquisition policies.  The core
@@ -1086,13 +1091,16 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
     /**
      * Attempts to acquire in exclusive mode. This method should query
      * if the state of the object permits it to be acquired in the
-     * exclusive mode, and if so to acquire it.
+     * exclusive mode, and if so to acquire it.<br/>
+     * 尝试以独占模式获取锁。此方法应该先查询对象的状态是否允许以独占模式获取该对象，如果允许，则获取该对象。
      *
      * <p>This method is always invoked by the thread performing
      * acquire.  If this method reports failure, the acquire method
      * may queue the thread, if it is not already queued, until it is
      * signalled by a release from some other thread. This can be used
-     * to implement method {@link Lock#tryLock()}.
+     * to implement method {@link Lock#tryLock()}.<br/>
+     * 正在获取锁的线程调用此方法。如果此方法报告失败，acquire 方法可能会将线程入队(如果尚未入队)，
+     * 直到其他线程发出释放信号。该方法可用于实现方法 {@link Lock#tryLock()}。
      *
      * <p>The default
      * implementation throws {@link UnsupportedOperationException}.
@@ -1115,7 +1123,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
 
     /**
      * Attempts to set the state to reflect a release in exclusive
-     * mode.
+     * mode.独占模式下尝试修改 state 字段，释放锁资源。
      *
      * <p>This method is always invoked by the thread performing release.
      *
@@ -1142,7 +1150,8 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
     /**
      * Attempts to acquire in shared mode. This method should query if
      * the state of the object permits it to be acquired in the shared
-     * mode, and if so to acquire it.
+     * mode, and if so to acquire it.<br/>
+     * 尝试在共享模式下获取锁资源。调用该方法前应该先查询对象的状态是否允许在共享模式下获取该对象，以及是否允许获取该对象。
      *
      * <p>This method is always invoked by the thread performing
      * acquire.  If this method reports failure, the acquire method
@@ -1204,7 +1213,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * Returns {@code true} if synchronization is held exclusively with
      * respect to the current (calling) thread.  This method is invoked
      * upon each call to a non-waiting {@link ConditionObject} method.
-     * (Waiting methods instead invoke {@link #release}.)
+     * (Waiting methods instead invoke {@link #release}.)<br/>
+     * 如果持有锁资源的线程调用该方法，则返回 {@code true}。
+     * 每次调用非等待的 {@link ConditionObject} 方法时都会调用此方法。（等待方法调用{@link #release}。）
      *
      * <p>The default implementation throws {@link
      * UnsupportedOperationException}. This method is invoked
