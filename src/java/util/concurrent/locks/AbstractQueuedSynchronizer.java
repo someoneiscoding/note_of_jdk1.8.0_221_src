@@ -53,7 +53,11 @@ import sun.misc.Unsafe;
  * other state fields, but only the atomically updated {@code int}
  * value manipulated using methods {@link #getState}, {@link
  * #setState} and {@link #compareAndSetState} is tracked with respect
- * to synchronization.
+ * to synchronization.<br/>
+ * AQS 提供一个框架，用于实现依赖先进先出（FIFO）等待队列的阻塞锁和相关同步器（信号量、事件等）。
+ * AQS 设计为大多数类型的同步器的提供了通用底层方法，这些同步器依赖于单个原子 {@code int} 值来表示状态。
+ * 子类必须 orverride 更改此状态的 protected 方法，即 {@link #getState} 和 {@link #setState}。
+ * 鉴于这些，该类中的其他方法实现了所有排队和阻塞机制。子类可以维护其他状态字段，但只有原子更新 {@code int} 值使用方法 {@link #getState}、{@link #setState} 和 {@link #compareAndSetState} 被同步保护。
  *
  * <p>Subclasses should be defined as non-public internal helper
  * classes that are used to implement the synchronization properties
@@ -62,7 +66,9 @@ import sun.misc.Unsafe;
  * synchronization interface.  Instead it defines methods such as
  * {@link #acquireInterruptibly} that can be invoked as
  * appropriate by concrete locks and related synchronizers to
- * implement their public methods.
+ * implement their public methods.<br/>
+ * 子类应定义为非 public 内部类，用于实现其封闭类的同步属性。类 {@code AbstractQueuedSynchronizer}
+ * 未实现任何同步接口。相反，它定义了 {@link #acquireInterruptibly} 等方法，具体锁和相关同步器可以适当地调用这些方法来实现它们的公共方法。
  *
  * <p>This class supports either or both a default <em>exclusive</em>
  * mode and a <em>shared</em> mode. When acquired in exclusive mode,
@@ -75,7 +81,11 @@ import sun.misc.Unsafe;
  * same FIFO queue. Usually, implementation subclasses support only
  * one of these modes, but both can come into play for example in a
  * {@link ReadWriteLock}. Subclasses that support only exclusive or
- * only shared modes need not define the methods supporting the unused mode.
+ * only shared modes need not define the methods supporting the unused mode.<br/>
+ * AQS 支持独占模式(默认)和共享模式。在独占模式下获取锁时，其他线程无法获取成功。
+ * 多线程获取共享模式可能（但不需要）成功。除了机械意义上的差异外，当共享模式获取成功时，下一个等待线程（如果存在）也必须确定它是否也可以获取。
+ * 在不同模式下等待的线程共享相同的 FIFO 队列。通常，子类实现只支持其中一种模式，但这两种模式都可以在 {@link ReadWriteLock} 中发挥作用。
+ * 仅支持独占或共享模式的子类不需要定义不支持模式的方法。
  *
  * <p>This class defines a nested {@link ConditionObject} class that
  * can be used as a {@link Condition} implementation by subclasses
@@ -88,26 +98,36 @@ import sun.misc.Unsafe;
  * {@code AbstractQueuedSynchronizer} method otherwise creates such a
  * condition, so if this constraint cannot be met, do not use it.  The
  * behavior of {@link ConditionObject} depends of course on the
- * semantics of its synchronizer implementation.
+ * semantics of its synchronizer implementation.<br/>
+ * AQS 定义了一个嵌套的 {@link ConditionObject} 类，该类可用作支持独占模式的子类的 {@link Condition} 实现，{@link #isHeldExclusively} 方法
+ * 报告当前线程是否对同步器独占，{@link #release} 方法被当前线程用来完全释放 {@link #getState} 对象，
+ * 并且 {@link #acquire}，给定此保存的状态值，最终将此对象恢复到其先前获取的状态。
+ * 没有 {@code AbstractQueuedSynchronizer} 方法会创建这样的条件，因此如果无法满足此约束，请不要使用它。
+ * {@link ConditionObject} 的行为当然，这取决于其同步器实现的语义。
  *
  * <p>This class provides inspection, instrumentation, and monitoring
  * methods for the internal queue, as well as similar methods for
  * condition objects. These can be exported as desired into classes
  * using an {@code AbstractQueuedSynchronizer} for their
- * synchronization mechanics.
+ * synchronization mechanics.<br/>
+ * AQS 提供内部队列的检查、检测和监视方法，以及条件对象的类似方法。
+ * 可以根据需要使用 {@code AbstractQueuedSynchronizer} 作为同步机制将它们导出到类中。
  *
  * <p>Serialization of this class stores only the underlying atomic
  * integer maintaining state, so deserialized objects have empty
  * thread queues. Typical subclasses requiring serializability will
  * define a {@code readObject} method that restores this to a known
- * initial state upon deserialization.
- *
+ * initial state upon deserialization.<br/>
+ * 此类的序列化只存储底层原子整数维护状态，因此反序列化后的对象线程队列为空。
+ * 需要序列化的典型子类需定义 {@code readObject} 方法，该方法在反序列化时将其恢复到已知的初始状态。
  * <h3>Usage</h3>
  *
  * <p>To use this class as the basis of a synchronizer, redefine the
  * following methods, as applicable, by inspecting and/or modifying
  * the synchronization state using {@link #getState}, {@link
- * #setState} and/or {@link #compareAndSetState}:
+ * #setState} and/or {@link #compareAndSetState}:<br/>
+ * 要将此类用作同步器的基础，请通过使用 {@link #getState}、{@link #setState}、{@link #compareAndSetState}检查或修改同步状态，
+ * 重新定义以下方法（如适用）：
  *
  * <ul>
  * <li> {@link #tryAcquire}
@@ -1268,6 +1288,8 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * Releases in exclusive mode.  Implemented by unblocking one or
      * more threads if {@link #tryRelease} returns true.
      * This method can be used to implement method {@link Lock#unlock}.
+     * 独占模式下释放锁资源。如果 {@link #tryRelease} 返回 true 解除阻塞一个或多个线程。
+     * 该方法可以用来实现 {@link Lock#unlock} 方法。
      *
      * @param arg the release argument.  This value is conveyed to
      *        {@link #tryRelease} but is otherwise uninterpreted and
