@@ -286,9 +286,7 @@ import sun.misc.Unsafe;
  * @since 1.5
  * @author Doug Lea
  */
-public abstract class AbstractQueuedSynchronizer
-    extends AbstractOwnableSynchronizer
-    implements java.io.Serializable {
+public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchronizer implements java.io.Serializable {
 
     private static final long serialVersionUID = 7373984972572414691L;
 
@@ -314,7 +312,12 @@ public abstract class AbstractQueuedSynchronizer
      * granted locks etc though.  A thread may try to acquire if it is
      * first in the queue. But being first does not guarantee success;
      * it only gives the right to contend.  So the currently released
-     * contender thread may need to rewait.
+     * contender thread may need to rewait.<br/>
+     * 等待队列是 CLH 锁队列的变体。CLH锁通常用于自旋锁。这里，我们使用它来(构建)阻塞同步器，使用的基本策略相同，
+     * 即在节点中保存一些前一个线程的控制信息。每个节点中的『状态』字段跟踪线程是否应该阻塞。
+     * 前一个节点释放时会发出信号给到该节点。队列的每个节点都充当一个特定的通知监视器，并包含一个等待线程。
+     * status 字段不控制线程是否被授予锁等。如果线程是队列中的第一个线程，它可能会尝试获取。但第一并不能保证成功；
+     * 它只给了我们抗争的权利。因此，当前发布的竞争者线程可能需要重新等待。
      *
      * <p>To enqueue into a CLH lock, you atomically splice it in as new
      * tail. To dequeue, you just set the head field.
@@ -330,14 +333,17 @@ public abstract class AbstractQueuedSynchronizer
      * involves only updating the "head". However, it takes a bit
      * more work for nodes to determine who their successors are,
      * in part to deal with possible cancellation due to timeouts
-     * and interrupts.
+     * and interrupts.<br/>
+     * 插入到 CLH 队列只需要在 tail 节点上执行单个原子操作，因此有一个简单的从出队到入队的临界点。
+     * 类似地，出列只涉及更新 head 节点。然而，节点需要更多的工作来确定谁是他们的继任者，部分是为了处理由于超时和中断而可能取消的问题。<br/>
      *
      * <p>The "prev" links (not used in original CLH locks), are mainly
      * needed to handle cancellation. If a node is cancelled, its
      * successor is (normally) relinked to a non-cancelled
      * predecessor. For explanation of similar mechanics in the case
      * of spin locks, see the papers by Scott and Scherer at
-     * http://www.cs.rochester.edu/u/scott/synchronization/
+     * http://www.cs.rochester.edu/u/scott/synchronization/<br/>
+     * prev 引用（未在原始CLH锁中使用）主要用于处理取消操作。如果节点被取消，其后续节点（通常）将重新链接到未取消的前置节点。<br/>
      *
      * <p>We also use "next" links to implement blocking mechanics.
      * The thread id for each node is kept in its own node, so a
@@ -348,7 +354,11 @@ public abstract class AbstractQueuedSynchronizer
      * when necessary by checking backwards from the atomically
      * updated "tail" when a node's successor appears to be null.
      * (Or, said differently, the next-links are an optimization
-     * so that we don't usually need a backward scan.)
+     * so that we don't usually need a backward scan.)<br/>
+     * 我们还使用 next 来实现阻塞机制。每个节点的线程 id 都保存在自己的节点中，
+     * 因此前驱节点通过遍历 next 来确定它是哪个线程，从而向下一个节点发出唤醒信号。
+     * 准继任者必须设置其前任节点的 next 字段避免与新排队的节点竞争。
+     * 当节点的后续节点显示为空时，通过从原子更新的 tail 字段向后检查，在必要时可以解决此问题。（或者，换言之，next links 是一个优化，因此我们通常不需要反向扫描。）
      *
      * <p>Cancellation introduces some conservatism to the basic
      * algorithms.  Since we must poll for cancellation of other
@@ -356,13 +366,17 @@ public abstract class AbstractQueuedSynchronizer
      * ahead or behind us. This is dealt with by always unparking
      * successors upon cancellation, allowing them to stabilize on
      * a new predecessor, unless we can identify an uncancelled
-     * predecessor who will carry this responsibility.
+     * predecessor who will carry this responsibility.<br/>
+     * 取消操作为基本算法引入了一些保守性。因为我们必须轮询其他节点的取消，所以我们可能会忽略已取消的节点是在我们前面还是后面。
+     * 这是通过在撤销时始终取消继承人资格来解决的，允许他们稳定在新的前任上，除非我们能够确定一个未被撤销的前任将承担这一责任。
      *
      * <p>CLH queues need a dummy header node to get started. But
      * we don't create them on construction, because it would be wasted
      * effort if there is never contention. Instead, the node
      * is constructed and head and tail pointers are set upon first
-     * contention.
+     * contention.<br/>
+     * CLH 队列需要一个虚拟头节点来启动。但我们不会在构建时创建它们，因为如果不存在争用，这将是徒劳的。
+     * 相反，在第一次争用时构造节点并设置 head 指针和 tail 指针。
      *
      * <p>Threads waiting on Conditions use the same nodes, but
      * use an additional link. Conditions only need to link nodes
@@ -370,7 +384,10 @@ public abstract class AbstractQueuedSynchronizer
      * only accessed when exclusively held.  Upon await, a node is
      * inserted into a condition queue.  Upon signal, the node is
      * transferred to the main queue.  A special value of status
-     * field is used to mark which queue a node is on.
+     * field is used to mark which queue a node is on.<br/>
+     * 等待条件的线程使用相同的节点，但使用额外的 link。
+     * 条件只需要 link 简单（非并发）链接队列中的节点，因为它们仅在独占持有时才被访问。
+     * 等待时，将节点插入到条件队列中。收到信号后，节点被转移到主队列。状态字段的特殊值用于标记节点所在的队列。
      *
      * <p>Thanks go to Dave Dice, Mark Moir, Victor Luchangco, Bill
      * Scherer and Michael Scott, along with members of JSR-166
