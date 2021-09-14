@@ -334,8 +334,8 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * it only gives the right to contend.  So the currently released
      * contender thread may need to rewait.<br/>
      * 等待队列是 CLH 锁队列的变体。CLH锁通常用于自旋锁。这里，我们使用它来(构建)阻塞同步器，使用的基本策略相同，
-     * 即在节点中保存一些前一个线程的控制信息。每个节点中的『状态』字段跟踪线程是否应该阻塞。
-     * 前一个节点释放时会发出信号给到该节点。队列的每个节点都充当一个特定的通知监视器，并包含一个等待线程。
+     * 即在节点中保存前一个线程的控制信息。每个节点中的『状态』字段跟踪线程是否应该阻塞。
+     * 前驱节点释放时会发出信号给到该节点。队列的每个节点都充当一个特定的通知监视器，并包含一个等待线程。
      * status 字段不控制线程是否被授予锁等。如果线程是队列中的第一个线程，它可能会尝试获取。但第一并不能保证成功；
      * 它只给了我们抗争的权利。因此，当前发布的竞争者线程可能需要重新等待。
      *
@@ -415,56 +415,89 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * on the design of this class.
      */
     static final class Node {
-        /** Marker to indicate a node is waiting in shared mode */
+        /**
+         * Marker to indicate a node is waiting in shared mode
+         * 用于指示节点正在共享模式下等待
+         * */
         static final Node SHARED = new Node();
-        /** Marker to indicate a node is waiting in exclusive mode */
+
+        /**
+         * Marker to indicate a node is waiting in exclusive mode
+         * 用于指示节点正在独占模式下等待
+         * */
         static final Node EXCLUSIVE = null;
 
-        /** waitStatus value to indicate thread has cancelled */
+        /**
+         * waitStatus value to indicate thread has cancelled
+         * waitStatus，用于指示线程已取消获取锁操作
+         * */
         static final int CANCELLED =  1;
-        /** waitStatus value to indicate successor's thread needs unparking */
+
+        /**
+         * waitStatus value to indicate successor's thread needs unparking
+         * waitStatus，用于指示后续获取锁的线程需要 unparking
+         * */
         static final int SIGNAL    = -1;
-        /** waitStatus value to indicate thread is waiting on condition */
+
+        /**
+         * waitStatus value to indicate thread is waiting on condition
+         * waitStatus，用于指示线程需要等待条件满足
+         * */
         static final int CONDITION = -2;
+
         /**
          * waitStatus value to indicate the next acquireShared should
          * unconditionally propagate
+         * waitStatus，指示下一个 acquireShared 应无条件传播
          */
         static final int PROPAGATE = -3;
 
         /**
          * Status field, taking on only the values:
+         * 状态字段，仅可采用以下值：
          *   SIGNAL:     The successor of this node is (or will soon be)
          *               blocked (via park), so the current node must
          *               unpark its successor when it releases or
          *               cancels. To avoid races, acquire methods must
          *               first indicate they need a signal,
          *               then retry the atomic acquire, and then,
-         *               on failure, block.
+         *               on failure, block.<br/>
+         *               此节点的后续节点已（或即将）被阻止（通过park），因此当前节点
+         *               在释放或取消时必须取消其后续节点的连接。为了避免竞争，acquire 方法
+         *               必须首先指示它们需要等待信号，然后重试原子操作 acquire，然后在失败时阻塞。
          *   CANCELLED:  This node is cancelled due to timeout or interrupt.
          *               Nodes never leave this state. In particular,
-         *               a thread with cancelled node never again blocks.
+         *               a thread with cancelled node never again blocks.<br/>
+         *               由于超时或中断，此节点获取锁操作被取消。节点从未离开此状态。
+         *               特别是，具有取消节点的线程不会再次阻塞。
          *   CONDITION:  This node is currently on a condition queue.
          *               It will not be used as a sync queue node
          *               until transferred, at which time the status
          *               will be set to 0. (Use of this value here has
          *               nothing to do with the other uses of the
-         *               field, but simplifies mechanics.)
+         *               field, but simplifies mechanics.)<br/>
+         *               此节点当前位于条件队列中。在传输之前，它不会用作同步队列节点，此时状态将设置为0。
+         *               （此处使用此值与字段的其他用途无关，但简化了编码实现。）
          *   PROPAGATE:  A releaseShared should be propagated to other
          *               nodes. This is set (for head node only) in
          *               doReleaseShared to ensure propagation
          *               continues, even if other operations have
-         *               since intervened.
+         *               since intervened.<br/>
+         *               releaseShared 应该传播到其他节点。这是在 doReleaseShared 中设置的（仅针对头部节点），
+         *               以确保传播继续进行，即使其他操作已经介入。
          *   0:          None of the above
          *
          * The values are arranged numerically to simplify use.
          * Non-negative values mean that a node doesn't need to
          * signal. So, most code doesn't need to check for particular
          * values, just for sign.
+         * 非负值表示节点不需要发送信号。所以，大多数代码不需要检查特定的值，只需要检查符号。
          *
          * The field is initialized to 0 for normal sync nodes, and
          * CONDITION for condition nodes.  It is modified using CAS
          * (or when possible, unconditional volatile writes).
+         * 对于正常同步节点，字段初始化为 0；
+         * 对于条件节点，字段初始化为 CONDITION。使用 CAS（或在可能的情况下，使用无条件 volatile 写入）对其进行修改。
          */
         volatile int waitStatus;
 
@@ -477,7 +510,11 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * because the head node is never cancelled: A node becomes
          * head only as a result of successful acquire. A
          * cancelled thread never succeeds in acquiring, and a thread only
-         * cancels itself, not any other node.
+         * cancels itself, not any other node.<br/>
+         * 链接到当前节点/线程检查等待状态所依赖的前置节点。在如归过程中分配，
+         * 仅在出队时取消（为了 GC）。此外，在取消前一个节点时，我们会在查找未取消的前一个节点时短路，
+         * 该前一个节点将始终存在，因为头节点从未取消：只有成功获取后，节点才会成为头节点。
+         * 被取消的线程永远不会成功获取，线程只会取消自身，而不会取消任何其他节点。
          */
         volatile Node prev;
 
@@ -492,13 +529,19 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * to be null, we can scan prev's from the tail to
          * double-check.  The next field of cancelled nodes is set to
          * point to the node itself instead of null, to make life
-         * easier for isOnSyncQueue.
+         * easier for isOnSyncQueue.<br/>
+         * 链接到后续节点，当前节点/线程在释放时将对其进行 unparks。在入队过程中设置该字段，
+         * 在绕过已取消的前驱节点时调整，在出列时取消（为了 GC）。入队操作直到连接之后才分配前置的 next 字段，
+         * 所以看到为 null 的 next 字段并不一定意味着该节点在队尾。但是，如果下一个字段显示为空，
+         * 我们可以从 tail 节点扫描 prev 字段以进行双重检查。取消节点的 next 字段设置为指向节点本身，
+         * 而不是 null，以使 isOnSyncQueue 的工作更轻松。
          */
         volatile Node next;
 
         /**
          * The thread that enqueued this node.  Initialized on
          * construction and nulled out after use.
+         * 使此节点入队的线程。构造时初始化，使用后为空。
          */
         volatile Thread thread;
 
@@ -510,12 +553,16 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * conditions. They are then transferred to the queue to
          * re-acquire. And because conditions can only be exclusive,
          * we save a field by using special value to indicate shared
-         * mode.
+         * mode.<br/>
+         * 链接到下一个处于 CONDITION|SHARED 状态的节点。因为只有在独占模式下保持时才访问条件队列，
+         * 所以我们只需要一个简单的链表来保持节点在等待条件时的状态。然后将它们转移到队列中以重新获取。
+         * 由于条件只能是独占的，我们通过使用特殊值来表示共享模式来保存字段。
          */
         Node nextWaiter;
 
         /**
          * Returns true if node is waiting in shared mode.
+         * 如果节点正在共享模式下等待，则返回 true。
          */
         final boolean isShared() {
             return nextWaiter == SHARED;
@@ -524,9 +571,11 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         /**
          * Returns previous node, or throws NullPointerException if null.
          * Use when predecessor cannot be null.  The null check could
-         * be elided, but is present to help the VM.
+         * be elided, but is present to help the VM.<br/>
+         * 返回前驱节点，如果为 null，则抛出 NullPointerException。
+         * 当前置项不能为空时使用。NPE 检查可以省略，但它的出现是为了帮助 VM。
          *
-         * @return the predecessor of this node
+         * @return the predecessor of this node 返回前驱节点
          */
         final Node predecessor() throws NullPointerException {
             Node p = prev;
@@ -536,15 +585,29 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                 return p;
         }
 
-        Node() {    // Used to establish initial head or SHARED marker
+        /**
+         * Used to establish initial head or SHARED marker
+         * 用于创建 SHARED 节点或初始化节点
+         */
+        Node() {
         }
 
-        Node(Thread thread, Node mode) {     // Used by addWaiter
+        /**
+         * Used by addWaiter
+         * @param thread 线程
+         * @param mode 节点模式：共享|独占
+         */
+        Node(Thread thread, Node mode) {
             this.nextWaiter = mode;
             this.thread = thread;
         }
 
-        Node(Thread thread, int waitStatus) { // Used by Condition
+        /**
+         * Used by Condition
+         * @param thread 线程
+         * @param waitStatus
+         */
+        Node(Thread thread, int waitStatus) {
             this.waitStatus = waitStatus;
             this.thread = thread;
         }
@@ -554,18 +617,22 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * Head of the wait queue, lazily initialized.  Except for
      * initialization, it is modified only via method setHead.  Note:
      * If head exists, its waitStatus is guaranteed not to be
-     * CANCELLED.
+     * CANCELLED.<br/>
+     * 等待队列的头节点，延迟初始化。除初始化外，它仅通过方法 setHead 进行修改。
+     * 注意：如果 head 存在，则保证不会取消其 waitStatus。
      */
     private transient volatile Node head;
 
     /**
      * Tail of the wait queue, lazily initialized.  Modified only via
-     * method enq to add new wait node.
+     * method enq to add new wait node.<br/>
+     * 等待队列的尾节点，延迟初始化。仅通过入队方法修改以添加新的等待线程节点。
      */
     private transient volatile Node tail;
 
     /**
      * The synchronization state.
+     * 同步器
      */
     private volatile int state;
 
@@ -591,7 +658,8 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * Atomically sets synchronization state to the given updated
      * value if the current state value equals the expected value.
      * This operation has memory semantics of a {@code volatile} read
-     * and write.
+     * and write.<br/>
+     * 如果当前状态值等于预期值，则自动将同步状态设置为给定的更新值。此操作具有 {@code volatile} 读写的内存语义。
      *
      * @param expect the expected value
      * @param update the new value
@@ -603,7 +671,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         return unsafe.compareAndSwapInt(this, stateOffset, expect, update);
     }
 
-    // Queuing utilities
+    // Queuing utilities 队列操作方法
 
     /**
      * The number of nanoseconds for which it is faster to spin
