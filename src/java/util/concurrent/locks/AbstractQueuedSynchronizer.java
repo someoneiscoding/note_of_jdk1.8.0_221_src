@@ -865,6 +865,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * racing acquires/releases, so most need signals now or soon
          * anyway.
          */
+        // 如果状态为取消 || 头结点为空 || 头节点<0
         if (propagate > 0 || h == null || h.waitStatus < 0 ||
                 (h = head) == null || h.waitStatus < 0) {
             Node s = node.next;
@@ -878,6 +879,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
     /**
      * Cancels an ongoing attempt to acquire.
      * 指定节点线程取消获取锁。
+     * 如果是前驱节点是头节点，则唤醒后继节点，否则如果前驱节点处于 SIGNAL 状态，则从工作队列移除该节点
      *
      * @param node the node
      */
@@ -1086,6 +1088,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         if (nanosTimeout <= 0L)
             return false;
         final long deadline = System.nanoTime() + nanosTimeout;
+        // 新增独占模式节点入队
         final Node node = addWaiter(Node.EXCLUSIVE);
         boolean failed = true;
         try {
@@ -1102,12 +1105,15 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                 // 如果已超时，返回 false
                 if (nanosTimeout <= 0L)
                     return false;
+                // 如果前驱节点非 SIGNAL 状态，且剩余时间大于 自旋快于线程阻塞时间的临界值，则阻塞线程至 deadline
                 if (shouldParkAfterFailedAcquire(p, node) && nanosTimeout > spinForTimeoutThreshold)
                     LockSupport.parkNanos(this, nanosTimeout);
+                // 如果线程被中断，抛异常
                 if (Thread.interrupted())
                     throw new InterruptedException();
             }
         } finally {
+            // 如果线程被中断，则取消获取锁
             if (failed)
                 cancelAcquire(node);
         }
@@ -1115,19 +1121,24 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
 
     /**
      * Acquires in shared uninterruptible mode.
-     *
+     * 共享可中断模式下获取锁
      * @param arg the acquire argument
      */
     private void doAcquireShared(int arg) {
+        // 新增贡献模式节点入队
         final Node node = addWaiter(Node.SHARED);
         boolean failed = true;
         try {
             boolean interrupted = false;
             for (; ; ) {
+                // 获取前驱节点
                 final Node p = node.predecessor();
+                // 如果前驱节点为头节点
                 if (p == head) {
+                    // 尝试获取共享锁
                     int r = tryAcquireShared(arg);
                     if (r >= 0) {
+                        // 获取成功，则
                         setHeadAndPropagate(node, r);
                         p.next = null; // help GC
                         if (interrupted)
@@ -1136,8 +1147,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                         return;
                     }
                 }
-                if (shouldParkAfterFailedAcquire(p, node) &&
-                        parkAndCheckInterrupt())
+                if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt())
                     interrupted = true;
             }
         } finally {
