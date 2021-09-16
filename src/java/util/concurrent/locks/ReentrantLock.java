@@ -77,11 +77,14 @@ import java.util.Collection;
  * 
  * Also note that the untimed {@link #tryLock()} method does not
  * honor the fairness setting. It will succeed if the lock
- * is available even if other threads are waiting.
+ * is available even if other threads are waiting.<br/>
+ * 还要注意，无超时时间的 {@link #tryLock()} 方法不支持公平性设置。
+ * 如果锁可用，即使其他线程正在等待，它也会成功。
  *
  * <p>It is recommended practice to <em>always</em> immediately
  * follow a call to {@code lock} with a {@code try} block, most
- * typically in a before/after construction such as:
+ * typically in a before/after construction such as: <br/>
+ * 最佳实践如下：
  *
  *  <pre> {@code
  * class X {
@@ -101,7 +104,9 @@ import java.util.Collection;
  * <p>In addition to implementing the {@link Lock} interface, this
  * class defines a number of {@code public} and {@code protected}
  * methods for inspecting the state of the lock.  Some of these
- * methods are only useful for instrumentation and monitoring.
+ * methods are only useful for instrumentation and monitoring.<br/>
+ * 除了实现 {@link Lock} 接口之外，这个类还定义了许多 {@code public} 和 {@code protected} 方法来检查锁的状态。
+ * 其中一些方法仅适用于监测。
  *
  * <p>Serialization of this class behaves in the same way as built-in
  * locks: a deserialized lock is in the unlocked state, regardless of
@@ -109,27 +114,34 @@ import java.util.Collection;
  *
  * <p>This lock supports a maximum of 2147483647 recursive locks by
  * the same thread. Attempts to exceed this limit result in
- * {@link Error} throws from locking methods.
+ * {@link Error} throws from locking methods.<br/>
+ * 此锁支持同一线程最多持有 2147483647 个递归锁。试图超过此限制将导致锁方法抛出 {@link Error}。
  *
  * @since 1.5
  * @author Doug Lea
  */
 public class ReentrantLock implements Lock, java.io.Serializable {
     private static final long serialVersionUID = 7373984872572414699L;
-    /** Synchronizer providing all implementation mechanics */
+    /**
+     * Synchronizer providing all implementation mechanics
+     * 提供所有实现机制的同步器
+     * */
     private final Sync sync;
 
     /**
      * Base of synchronization control for this lock. Subclassed
      * into fair and nonfair versions below. Uses AQS state to
-     * represent the number of holds on the lock.
+     * represent the number of holds on the lock.<br/>
+     * Sync 是同步控制的基础，分为公平和非公平版本。使用 AQS 的 state 字段表示锁的持有数量。
+     *
      */
     abstract static class Sync extends AbstractQueuedSynchronizer {
         private static final long serialVersionUID = -5179523762034025860L;
 
         /**
          * Performs {@link Lock#lock}. The main reason for subclassing
-         * is to allow fast path for nonfair version.
+         * is to allow fast path for nonfair version.<br/>
+         * 执行 {@link #lock()} 操作。子类化的主要原因是允许非公平版本的捷径。
          */
         abstract void lock();
 
