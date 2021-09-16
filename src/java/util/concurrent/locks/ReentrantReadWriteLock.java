@@ -447,7 +447,8 @@ public class ReentrantReadWriteLock implements ReadWriteLock, java.io.Serializab
         protected final int tryAcquireShared(int unused) {
             /*
              * Walkthrough:
-             * 1. If write lock held by another thread, fail.
+             * 1. If write lock held by another thread, fail.<br/>
+             *    如果写入锁被另外一个线程持有，失败。
              * 2. Otherwise, this thread is eligible for
              *    lock wrt state, so ask if it should block
              *    because of queue policy. If not, try

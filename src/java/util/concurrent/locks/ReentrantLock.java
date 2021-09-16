@@ -42,6 +42,7 @@ import java.util.Collection;
  * behavior and semantics as the implicit monitor lock accessed using
  * {@code synchronized} methods and statements, but with extended
  * capabilities.
+ * 一种可重入互斥锁。其基本行为和语义与使用 {@code synchronized} 关键字的隐式监视锁相同，但具有扩展功能。
  *
  * <p>A {@code ReentrantLock} is <em>owned</em> by the thread last
  * successfully locking, but not yet unlocking it. A thread invoking
@@ -49,7 +50,11 @@ import java.util.Collection;
  * the lock is not owned by another thread. The method will return
  * immediately if the current thread already owns the lock. This can
  * be checked using methods {@link #isHeldByCurrentThread}, and {@link
- * #getHoldCount}.
+ * #getHoldCount}.<br/>
+ * {@code ReentrantLock} 由上次成功获取锁但还未释放锁的线程拥有。
+ * 当锁资源还未被其他线程获取时，调用 {@code lock} 的线程将成功获取锁，
+ * 如果当前线程已经拥有锁，则该方法将立即返回。
+ * 可以使用方法 {@link #isHeldByCurrentThread} 和 {@link #getHoldCount} 检查这一点。
  *
  * <p>The constructor for this class accepts an optional
  * <em>fairness</em> parameter.  When set {@code true}, under
@@ -63,7 +68,13 @@ import java.util.Collection;
  * fairness of thread scheduling. Thus, one of many threads using a
  * fair lock may obtain it multiple times in succession while other
  * active threads are not progressing and not currently holding the
- * lock.
+ * lock.<br/>
+ * 该类的构造函数 {@link #ReentrantLock(boolean fair)} 接受可选的公平性参数。当设置 {@code true} 时，
+ * 在竞争条件下，锁倾向于授予等待时间最长的线程访问权。如果为 false，此锁不保证任何特定的访问顺序。
+ * 与使用默认设置(非公平锁)的程序相比，使用由多个线程访问公平锁的程序可能会显示较低的总体吞吐量（即较慢；通常较慢），
+ * 但在获得锁和保证无饥饿的时间上差异较小。但是请注意，锁的公平性并不能保证线程调度的公平性。
+ * 因此，使用公平锁的多个线程中的一个线程可能会连续多次获得公平锁，而其他活动线程则没有进行，并且当前没有持有该锁。
+ * 
  * Also note that the untimed {@link #tryLock()} method does not
  * honor the fairness setting. It will succeed if the lock
  * is available even if other threads are waiting.
@@ -505,7 +516,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
 
     /**
      * Queries the number of holds on this lock by the current thread.
-     *
+     * 当前线程持有此锁的次数，如果当前线程未持有此锁，则为零.
      * <p>A thread has a hold on a lock for each lock action that is not
      * matched by an unlock action.
      *
@@ -530,7 +541,8 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * }}</pre>
      *
      * @return the number of holds on this lock by the current thread,
-     *         or zero if this lock is not held by the current thread
+     *         or zero if this lock is not held by the current thread。<br/>
+     *         当前线程持有此锁的次数，如果当前线程未持有此锁，则为零.
      */
     public int getHoldCount() {
         return sync.getHoldCount();
