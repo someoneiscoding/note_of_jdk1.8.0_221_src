@@ -141,26 +141,31 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         /**
          * Performs {@link Lock#lock}. The main reason for subclassing
          * is to allow fast path for nonfair version.<br/>
-         * 执行 {@link #lock()} 操作。子类化的主要原因是允许非公平版本的捷径。
+         * 执行 {@code #lock()} 操作。子类化的主要原因是允许非公平获取锁方法 {@link NonfairSync#lock()} 中提供(获取锁)捷径。
          */
         abstract void lock();
 
         /**
          * Performs non-fair tryLock.  tryAcquire is implemented in
-         * subclasses, but both need nonfair try for trylock method.
+         * subclasses, but both need nonfair try for trylock method.<br/>
+         * @return {@code true}: 获取锁资源成功
          */
         final boolean nonfairTryAcquire(int acquires) {
             final Thread current = Thread.currentThread();
             int c = getState();
+            // 如果当前没有线程持有锁资源
             if (c == 0) {
+                // 尝试 CAS 获取锁
                 if (compareAndSetState(0, acquires)) {
                     setExclusiveOwnerThread(current);
                     return true;
                 }
             }
+            // 如果当前持有锁资源线程就是当前线程(重入)，则更新 state 字段
             else if (current == getExclusiveOwnerThread()) {
                 int nextc = c + acquires;
-                if (nextc < 0) // overflow
+                // nextc < 0 则说明溢出
+                if (nextc < 0)
                     throw new Error("Maximum lock count exceeded");
                 setState(nextc);
                 return true;
@@ -168,6 +173,13 @@ public class ReentrantLock implements Lock, java.io.Serializable {
             return false;
         }
 
+        /**
+         * AQS tryRelease 方法的默认实现<br/>
+         * 如果要释放的锁资源数量刚好是当前是有的数量，则返回 true，并把当前持有锁资源的线程设置为 null。
+         * @param releases 释放锁的数量
+         * @return {@code true}: 释放锁资源成功
+         * @throws IllegalMonitorStateException 如果当前线程非锁资源持有者
+         */
         protected final boolean tryRelease(int releases) {
             int c = getState() - releases;
             if (Thread.currentThread() != getExclusiveOwnerThread())
@@ -225,15 +237,22 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         /**
          * Performs lock.  Try immediate barge, backing up to normal
          * acquire on failure.
+         * 先尝试 CAS 获取锁，成功则 setExclusiveOwnerThread；失败则调用 acquire(1)
          */
         final void lock() {
             // 若通过 CAS 设置变量 State（同步状态）成功，也就是获取锁成功，则将当前线程设置为独占线程。
+            // compareAndSetState 也是 acquire 方法的一部分实现，只不过在之前有很多校验。即 Sync#lock 方法注释中提到的 fast path
             if (compareAndSetState(0, 1))
                 setExclusiveOwnerThread(Thread.currentThread());
             else
                 acquire(1);
         }
 
+        /**
+         * 由 {@link #acquire} 调用
+         * @param acquires
+         * @return
+         */
         protected final boolean tryAcquire(int acquires) {
             return nonfairTryAcquire(acquires);
         }
@@ -252,14 +271,15 @@ public class ReentrantLock implements Lock, java.io.Serializable {
 
         /**
          * Fair version of tryAcquire.  Don't grant access unless
-         * recursive call or no waiters or is first.
+         * recursive call or no waiters or is first.<br/>
+         * tryAcquire 的公平版本。除非递归调用或当前队列无线程等待或是头节点的继任节点，否则不会授予访问权限。
          */
         protected final boolean tryAcquire(int acquires) {
             final Thread current = Thread.currentThread();
             int c = getState();
             if (c == 0) {
-                if (!hasQueuedPredecessors() &&
-                    compareAndSetState(0, acquires)) {
+                // 如果当前节点是头节点的后继节点 && 成功获取锁资源
+                if (!hasQueuedPredecessors() && compareAndSetState(0, acquires)) {
                     setExclusiveOwnerThread(current);
                     return true;
                 }

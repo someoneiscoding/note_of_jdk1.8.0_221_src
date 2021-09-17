@@ -47,8 +47,7 @@ package java.util.concurrent.locks;
  * @since 1.6
  * @author Doug Lea
  */
-public abstract class AbstractOwnableSynchronizer
-    implements java.io.Serializable {
+public abstract class AbstractOwnableSynchronizer implements java.io.Serializable {
 
     /** Use serial ID even though all fields transient. */
     private static final long serialVersionUID = 3737899427754241961L;
@@ -60,6 +59,7 @@ public abstract class AbstractOwnableSynchronizer
 
     /**
      * The current owner of exclusive mode synchronization.
+     * 独占模式下持有锁资源的线程
      */
     private transient Thread exclusiveOwnerThread;
 
@@ -67,7 +67,9 @@ public abstract class AbstractOwnableSynchronizer
      * Sets the thread that currently owns exclusive access.
      * A {@code null} argument indicates that no thread owns access.
      * This method does not otherwise impose any synchronization or
-     * {@code volatile} field accesses.
+     * {@code volatile} field accesses.<br/>
+     * 设置独占模式下持有锁资源的线程，如果参数为 null ，则说明当前没有线程持有锁资源。
+     * 该字段不保证可见性。
      * @param thread the owner thread
      */
     protected final void setExclusiveOwnerThread(Thread thread) {
@@ -77,7 +79,9 @@ public abstract class AbstractOwnableSynchronizer
     /**
      * Returns the thread last set by {@code setExclusiveOwnerThread},
      * or {@code null} if never set.  This method does not otherwise
-     * impose any synchronization or {@code volatile} field accesses.
+     * impose any synchronization or {@code volatile} field accesses.<br/>
+     * 获取独占模式下当前持有锁的线程，如果从来没有所竞争，值为 null。不保证可见性。
+     *
      * @return the owner thread
      */
     protected final Thread getExclusiveOwnerThread() {

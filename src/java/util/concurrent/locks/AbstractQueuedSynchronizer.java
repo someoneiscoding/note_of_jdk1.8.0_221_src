@@ -184,7 +184,13 @@ import sun.misc.Unsafe;
  * In particular, most fair synchronizers can define {@code tryAcquire}
  * to return {@code false} if {@link #hasQueuedPredecessors} (a method
  * specifically designed to be used by fair synchronizers) returns
- * {@code true}.  Other variations are possible.
+ * {@code true}.  Other variations are possible.<br/>
+ * 由于在入队之前调用了 acquire 方法，因此新的线程可能会在被阻塞和已入队的其他线程之前 barging。
+ * 但是，如果需要的话可以定义 {@code tryAcquire} 和 {@code tryAcquireShared}
+ * 以通过内部调用一个或多个检查方法来禁用 barging，从而提供一个公平的 FIFO 获取顺序。
+ * 特别是，大多数公平同步器可以定义 {@code tryAcquire} 以返回 {@code false}，
+ * 前提是 {@link #hasQueuedPredecessors()}（一种专门为公平同步器设计的方法）返回 {@code true}。
+ * 其他变化也是可能的。
  *
  * <p>Throughput and scalability are generally highest for the
  * default barging (also known as <em>greedy</em>,
@@ -201,7 +207,15 @@ import sun.misc.Unsafe;
  * augment this by preceding calls to acquire methods with
  * "fast-path" checks, possibly prechecking {@link #hasContended}
  * and/or {@link #hasQueuedThreads} to only do so if the synchronizer
- * is likely not to be contended.
+ * is likely not to be contended.<br/>
+ * 默认 barging 策略（也称为贪婪、renouncement 和 convoy-avoidance）的吞吐量和可扩展性通常最高。
+ * 虽然这不能保证公平和无饥饿，但允许先入队的线程在后入队的线程之前重新竞争，
+ * 并且每次重新竞争对新增线程来说也都有公平获取锁资源的机会。此外，获取锁资源时不自旋；
+ * 通常来说，它们可能会在被阻塞之前多次调用 {@code tryAcquire}，并穿插其他计算???。
+ * 当独占模式同步器只被短暂持有时，自旋自然是合适的，但当锁资源被长时间持有时，不自旋则没有大部分(长时间耗费CPU的)责任。
+ * 如果需要的话，可以通过在调用获取锁方法之前做 fast-path 的前置校验来增强这一点，
+ * 可能会预先检查 {@link #hasContended()}-是否有过锁征用 和 {@link #hasQueuedThreads}-队列中是否有等待线程，
+ * 以便仅在同步器可能不会被争用的情况下才直接通过 fast-path 获取锁资源。
  *
  * <p>This class provides an efficient and scalable basis for
  * synchronization in part by specializing its range of use to
@@ -642,14 +656,14 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
 
     /**
      * The synchronization state.
-     * 同步器
+     * 同步器资源，保证可见性
      */
     private volatile int state;
 
     /**
      * Returns the current value of synchronization state.
      * This operation has memory semantics of a {@code volatile} read.
-     *
+     * 获取锁状态，state 保证可见性
      * @return current state value
      */
     protected final int getState() {
@@ -1588,7 +1602,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
 
     /**
      * Version of getFirstQueuedThread called when fastpath fails
-     * 返回头几点的后置节点的持有线程引用
+     * 返回头节点的后继节点持有的线程引用
      */
     private Thread fullGetFirstQueuedThread() {
         /*
@@ -1678,6 +1692,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      *
      * <p>An invocation of this method is equivalent to (but may be
      * more efficient than):
+     * 该方法实现类似于↓，但效率可能比它更高。
      * <pre> {@code
      * getFirstQueuedThread() != Thread.currentThread() &&
      * hasQueuedThreads()}</pre>
@@ -1687,7 +1702,10 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * guarantee that some other thread will acquire before the current
      * thread.  Likewise, it is possible for another thread to win a
      * race to enqueue after this method has returned {@code false},
-     * due to the queue being empty.
+     * due to the queue being empty.<br/>
+     * 由于中断和超时导致的取消(获取锁资源)和可能随时发生，返回 {@code true} 并不保证其他线程
+     * 会在当前线程之前获取到锁资源。同理，由于队列为空，该方法返回 {@code false} 后，
+     * 其他线程也可能入队。
      *
      * <p>This method is designed to be used by a fair synchronizer to
      * avoid <a href="AbstractQueuedSynchronizer#barging">barging</a>.
@@ -1696,16 +1714,25 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * return a negative value, if this method returns {@code true}
      * (unless this is a reentrant acquire).  For example, the {@code
      * tryAcquire} method for a fair, reentrant, exclusive mode
-     * synchronizer might look like this:
+     * synchronizer might look like this:<br/>
+     * 该方法为公平同步器设计使用，以避免阻塞。
+     * 公平同步器的 {@link #tryAcquire} 方法应该返回 {@code false}，如果此方法返回 {@code true}（除非是可重入获取），
+     * 则其 {@link #tryAcquireShared} 方法应该返回负值(如 {@link ReentrantReadWriteLock#sync#tryAcquireShared(int)})。
+     * 例如，公平、可重入、独占模式同步器的 {@code tryAcquire} 方法可能如下所示：
      *
      * <pre> {@code
      * protected boolean tryAcquire(int arg) {
      *   if (isHeldExclusively()) {
      *     // A reentrant acquire; increment hold count
+     *     // 重入式获取锁资源，增加持有锁次数：AQS#state
      *     return true;
-     *   } else if (hasQueuedPredecessors()) {
+     *   }
+     *   // 如果队列中还有等待时间更长的线程，则返回 false
+     *   else if (hasQueuedPredecessors()) {
      *     return false;
-     *   } else {
+     *   }
+     *   // 否则正常走 acquire()
+     *   else {
      *     // try to acquire normally
      *   }
      * }}</pre>
