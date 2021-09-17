@@ -124,7 +124,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     private static final long serialVersionUID = 7373984872572414699L;
     /**
      * Synchronizer providing all implementation mechanics
-     * 提供所有实现机制的同步器
+     * 提供所有实现机制的同步器。ReentrantLock 的构造函数即创建 Sync 实例：NonfairSync or FairSync
      * */
     private final Sync sync;
 
@@ -141,7 +141,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         /**
          * Performs {@link Lock#lock}. The main reason for subclassing
          * is to allow fast path for nonfair version.<br/>
-         * 执行 {@code #lock()} 操作。子类化的主要原因是允许非公平获取锁方法 {@link NonfairSync#lock()} 中提供(获取锁)捷径。
+         * 执行 {@code #lock()} 操作。子类化的主要原因是允许非公平获取锁方法 {@code NonfairSync#lock()} 中提供(获取锁)捷径。
          */
         abstract void lock();
 
@@ -245,6 +245,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
             if (compareAndSetState(0, 1))
                 setExclusiveOwnerThread(Thread.currentThread());
             else
+                // 获取锁成功，持有计数默认 +1
                 acquire(1);
         }
 
@@ -272,13 +273,17 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         /**
          * Fair version of tryAcquire.  Don't grant access unless
          * recursive call or no waiters or is first.<br/>
-         * tryAcquire 的公平版本。除非递归调用或当前队列无线程等待或是头节点的继任节点，否则不会授予访问权限。
+         * tryAcquire 的公平版本。
+         * 除非递归调用或当前队列无线程等待或该节点是头节点的继任节点，否则不会授予访问权限，直接返回 false。
          */
         protected final boolean tryAcquire(int acquires) {
             final Thread current = Thread.currentThread();
             int c = getState();
             if (c == 0) {
                 // 如果当前节点是头节点的后继节点 && 成功获取锁资源
+                // 相比非公平版本的获取锁，多了 hasQueuedPredecessors 判断，原因如下：
+                // 非公平模式下获取锁是 barging，无脑争抢，跟线程节点在队列中所处的位置无关。
+                // 而公平模式不然，FIFO，有比当前队列等待时间更长的节点则只能放弃竞争返回 false。
                 if (!hasQueuedPredecessors() && compareAndSetState(0, acquires)) {
                     setExclusiveOwnerThread(current);
                     return true;
@@ -298,6 +303,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     /**
      * Creates an instance of {@code ReentrantLock}.
      * This is equivalent to using {@code ReentrantLock(false)}.
+     * 创建 ReentrantLock 实例，默认非公平模式
      */
     public ReentrantLock() {
         sync = new NonfairSync();
@@ -306,26 +312,30 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     /**
      * Creates an instance of {@code ReentrantLock} with the
      * given fairness policy.
-     *
-     * @param fair {@code true} if this lock should use a fair ordering policy
+     * 创建指定模式的可重入锁实例，false 非公平模式，true 公平模式。
+     * @param fair {@code true} if this lock should use a fair ordering policy| true 公平模式
      */
     public ReentrantLock(boolean fair) {
         sync = fair ? new FairSync() : new NonfairSync();
     }
 
     /**
-     * Acquires the lock.
-     *
+     * Acquires the lock.<br/>
+     * 获取锁资源
      * <p>Acquires the lock if it is not held by another thread and returns
-     * immediately, setting the lock hold count to one.
+     * immediately, setting the lock hold count to one.<br/>
+     * 如果锁未被其他线程持有，则获取锁并立即返回，将锁持有计数设置为 1。<br/>
      *
      * <p>If the current thread already holds the lock then the hold
-     * count is incremented by one and the method returns immediately.
+     * count is incremented by one and the method returns immediately.<br/>
+     * 如果当前线程已经持有锁，那么持有计数将增加1，并且方法立即返回。<br/>
      *
      * <p>If the lock is held by another thread then the
      * current thread becomes disabled for thread scheduling
      * purposes and lies dormant until the lock has been acquired,
-     * at which time the lock hold count is set to one.
+     * at which time the lock hold count is set to one.<br/>
+     * 如果锁由其他线程持有，则当前线程出于线程调度目的将被 disable，并处于休眠状态，
+     * 直到获得锁为止，此时锁持有计数设置为 1。
      */
     public void lock() {
         sync.lock();
@@ -334,6 +344,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     /**
      * Acquires the lock unless the current thread is
      * {@linkplain Thread#interrupt interrupted}.
+     * 阻塞式获取锁，除非线程被中断。<br/>
      *
      * <p>Acquires the lock if it is not held by another thread and returns
      * immediately, setting the lock hold count to one.
@@ -347,10 +358,10 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      *
      * <ul>
      *
-     * <li>The lock is acquired by the current thread; or
+     * <li>The lock is acquired by the current thread; or 锁资源被当前线程获取，或者
      *
      * <li>Some other thread {@linkplain Thread#interrupt interrupts} the
-     * current thread.
+     * current thread.其他线程中断了当前线程
      *
      * </ul>
      *
@@ -373,7 +384,8 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      *
      * <p>In this implementation, as this method is an explicit
      * interruption point, preference is given to responding to the
-     * interrupt over normal or reentrant acquisition of the lock.
+     * interrupt over normal or reentrant acquisition of the lock.<br/>
+     * 在该实现中，由于该方法是一个显式中断点，因此相对于锁的正常或可重入获取，优先响应中断。
      *
      * @throws InterruptedException if the current thread is interrupted
      */
@@ -384,6 +396,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     /**
      * Acquires the lock only if it is not held by another thread at the time
      * of invocation.
+     * 仅当调用时锁资源未其他线程持有时才可以获取(成功)。
      *
      * <p>Acquires the lock if it is not held by another thread and
      * returns immediately with the value {@code true}, setting the
@@ -395,7 +408,11 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * circumstances, even though it breaks fairness. If you want to honor
      * the fairness setting for this lock, then use
      * {@link #tryLock(long, TimeUnit) tryLock(0, TimeUnit.SECONDS) }
-     * which is almost equivalent (it also detects interruption).
+     * which is almost equivalent (it also detects interruption).<br/>
+     * 如果锁未被其他线程持有，则获取锁，并立即返回 {@code true}，并将锁持有计数设置为1。
+     * 即使将此锁设置为公平模式，对 {@code tryLock()} 的调用也会立即获取该锁（如果该锁可用），
+     * 无论当前是否有其他线程正在等待获取锁。这 barging 行为在某些情况下是有用的，即使它破坏了公平。
+     * 如果希望遵守此锁的公平性设置，请使用 {@link #tryLock(long,TimeUnit) tryLock(0，TimeUnit.SECONDS)}，这几乎是等效的（它还检测到中断）。
      *
      * <p>If the current thread already holds this lock then the hold
      * count is incremented by one and the method returns {@code true}.
@@ -414,7 +431,8 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     /**
      * Acquires the lock if it is not held by another thread within the given
      * waiting time and the current thread has not been
-     * {@linkplain Thread#interrupt interrupted}.
+     * {@linkplain Thread#interrupt interrupted}.<br/>
+     * 如果在给定的等待时间内锁没有被其他线程持有，并且当前线程没有被 {@linkplain thread#interrupt interrupted} 中断，则获取锁。
      *
      * <p>Acquires the lock if it is not held by another thread and returns
      * immediately with the value {@code true}, setting the lock hold count
@@ -422,11 +440,13 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * an available lock <em>will not</em> be acquired if any other threads
      * are waiting for the lock. This is in contrast to the {@link #tryLock()}
      * method. If you want a timed {@code tryLock} that does permit barging on
-     * a fair lock then combine the timed and un-timed forms together:
+     * a fair lock then combine the timed and un-timed forms together:<br/>
+     * 如果锁未被其他线程持有，则获取锁，并立即返回 {@code true}，并将锁持有计数设置为 1。
+     * 如果此锁已设置为使用公平策略，则如果其他线程正在等待获取锁，则获取锁失败。这与 {@link #tryLock()} 方法相反。
+     * 如果想要一个定时的 {@code tryLock} 允许在公平锁上进行 barging，那么将定时和非定时形式组合在一起：
      *
      *  <pre> {@code
-     * if (lock.tryLock() ||
-     *     lock.tryLock(timeout, unit)) {
+     * if (lock.tryLock() || lock.tryLock(timeout, unit)) {
      *   ...
      * }}</pre>
      *
@@ -483,8 +503,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * @throws InterruptedException if the current thread is interrupted
      * @throws NullPointerException if the time unit is null
      */
-    public boolean tryLock(long timeout, TimeUnit unit)
-            throws InterruptedException {
+    public boolean tryLock(long timeout, TimeUnit unit) throws InterruptedException {
         return sync.tryAcquireNanos(1, unit.toNanos(timeout));
     }
 

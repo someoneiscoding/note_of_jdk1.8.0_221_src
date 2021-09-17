@@ -954,7 +954,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * Checks and updates status for a node that failed to acquire.
      * Returns true if thread should block. This is the main signal
      * control in all acquire loops.  Requires that pred == node.prev.
-     * 检查并更新未能获取锁的节点的状态。如果前驱节点线程正在等待信号阻塞，则返回 true。
+     * 检查并更新未能获取锁的节点的状态。如果前驱节点线程正在阻塞，则返回 true。
      * 这是所有 acquire 循环中的主要信号控制。需要保证 pred == node.prev。
      *
      * @param pred node's predecessor holding status| 指定 node 的前驱节点
@@ -987,8 +987,11 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
              * waitStatus must be 0 or PROPAGATE.  Indicate that we
              * need a signal, but don't park yet.  Caller will need to
              * retry to make sure it cannot acquire before parking.<br/>
-             * waitStatus 必须为 0 或 PROPAGATE。表示我们需要等待 signal，
+             * waitStatus 此时为 0 或 PROPAGATE。表示我们需要等待 signal，
              * 但还没有处于阻塞状态。调用方需重试以确保在阻塞前无法获取锁。
+             * 节点初始状态为 0。如果当前无其他线程持有锁，则当前线程可直接获取，则不会走到此处。
+             * 如有其他线程阻塞等待获取锁，则后续新增节点入队时，会将该节点 (pred: 新增节点即队尾节点的前驱节点) 置为 SIGNAL 状态。
+             * 并 park(如果上层方法为阻塞指定时间，则先自旋) 该节点(pred)
              */
             compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
         }
@@ -1080,7 +1083,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                     failed = false;
                     return;
                 }
-                // 如果原队尾节点处于 SIGNAL 状态 && 阻塞该线程，并检查该线程是否被中断
+                // 如果原队尾前驱节点处于 SIGNAL 状态 && 阻塞该线程，并检查该线程是否被中断
                 if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt())
                     throw new InterruptedException();
             }
@@ -1119,7 +1122,8 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                 // 如果已超时，返回 false
                 if (nanosTimeout <= 0L)
                     return false;
-                // 如果前驱节点非 SIGNAL 状态，且剩余时间大于 自旋快于线程阻塞时间的临界值，则阻塞线程至 deadline
+                // 如果前驱节点为 SIGNAL 状态，且剩余时间大于 自旋快于线程阻塞时间的临界值，则阻塞线程至 deadline
+                //??? 先阻塞后自旋？还有机会自旋么。。
                 if (shouldParkAfterFailedAcquire(p, node) && nanosTimeout > spinForTimeoutThreshold)
                     LockSupport.parkNanos(this, nanosTimeout);
                 // 如果线程被中断，抛异常
