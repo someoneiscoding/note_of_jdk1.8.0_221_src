@@ -932,7 +932,9 @@ class Thread implements Runnable {
      * other words, if this method were to be called twice in succession, the
      * second call would return false (unless the current thread were
      * interrupted again, after the first call had cleared its interrupted
-     * status and before the second call had examined it).
+     * status and before the second call had examined it).<br/>
+     * 检查当前线程是否已中断。此方法清除线程的中断状态。换句话说，如果连续调用两次此方法，
+     * 则第二次调用将返回 false（除非当前线程在第一次调用清除其中断状态之后，第二次调用检查之前再次中断）。
      *
      * <p>A thread interruption ignored because a thread was not alive
      * at the time of the interrupt will be reflected by this method
@@ -967,7 +969,8 @@ class Thread implements Runnable {
     /**
      * Tests if some Thread has been interrupted.  The interrupted state
      * is reset or not based on the value of ClearInterrupted that is
-     * passed.
+     * passed.<br/>
+     * 检查某个线程是否被中断。中断状态是否重置取决于传递的ClearInterrupted值。
      */
     private native boolean isInterrupted(boolean ClearInterrupted);
 

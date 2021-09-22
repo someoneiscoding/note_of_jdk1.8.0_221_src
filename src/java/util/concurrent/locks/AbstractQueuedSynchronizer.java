@@ -976,7 +976,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
             /*
              * Predecessor was cancelled. Skip over predecessors and
              * indicate retry.
-             * 如果前驱节点已经取消获取锁，则跳过该前驱节点，继续向队首方向寻找非取消状态的节点
+             * 如果前驱节点已经取消获取锁，则跳过该前驱节点，(从当前节点所处位置)继续向队首方向寻找非取消状态的节点
              */
             do {
                 node.prev = pred = pred.prev;
