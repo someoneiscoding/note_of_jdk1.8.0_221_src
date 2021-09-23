@@ -913,13 +913,14 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         // predNext is the apparent node to unsplice. CASes below will
         // fail if not, in which case, we lost race vs another cancel
         // or signal, so no further action is necessary.
-        // predNext 即要从队列中移除的节点。
+        // predNext 即要从队列中移除的节点，即入参 node。
         Node predNext = pred.next;
 
         // Can use unconditional write instead of CAS here.
         // After this atomic step, other Nodes can skip past us.
         // Before, we are free of interference from other threads.
-        // 可以在此处使用无条件写入而不是 CAS。在这个原子步骤之后，其他节点可以跳过我们。在这之前，我们不受其他线程的干扰。
+        // 可以在此处使用无条件写入而不是 CAS。
+        // 在这个原子性步骤之后，其他节点可以跳过该入参节点(设置为取消状态后，自动跳过)。在这之前，我们不受其他线程的干扰???。
         node.waitStatus = Node.CANCELLED;
 
         // If we are the tail, remove ourselves.
@@ -1056,7 +1057,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                     interrupted = true;
             }
         } finally {
-            // 如果前驱节点为空，或获取锁失败，则取消获取锁
+            // 如果前驱节点为空，或锁持有计数溢出等，则取消获取锁
             if (failed)
                 cancelAcquire(node);
         }
