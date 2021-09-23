@@ -28,7 +28,8 @@ package java.lang;
 /**
  * Thrown to indicate that a thread has attempted to wait on an
  * object's monitor or to notify other threads waiting on an object's
- * monitor without owning the specified monitor.
+ * monitor without owning the specified monitor.<br/>
+ * 抛出异常以表明当前线程等待试图进入对象 monitor，或通知未拥有指定监视器时等待进入对象 monitor 的其他线程。
  *
  * @author  unascribed
  * @see     java.lang.Object#notify()

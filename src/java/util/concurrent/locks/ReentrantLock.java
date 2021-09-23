@@ -177,7 +177,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
          * AQS tryRelease 方法的默认实现<br/>
          * 如果要释放的锁资源数量刚好是当前是有的数量，则返回 true，并把当前持有锁资源的线程设置为 null。
          * @param releases 释放锁的数量
-         * @return {@code true}: 释放锁资源成功
+         * @return {@code true}: 释放锁资源成功; {@code false} getState() - releases != 0
          * @throws IllegalMonitorStateException 如果当前线程非锁资源持有者
          */
         protected final boolean tryRelease(int releases) {
@@ -432,7 +432,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * Acquires the lock if it is not held by another thread within the given
      * waiting time and the current thread has not been
      * {@linkplain Thread#interrupt interrupted}.<br/>
-     * 如果在给定的等待时间内锁没有被其他线程持有，并且当前线程没有被 {@linkplain thread#interrupt interrupted} 中断，则获取锁。
+     * 如果在给定的等待时间内锁没有被其他线程持有，并且当前线程没有被 {@linkplain Thread#interrupt interrupted} 中断，则获取锁。
      *
      * <p>Acquires the lock if it is not held by another thread and returns
      * immediately with the value {@code true}, setting the lock hold count
@@ -509,11 +509,15 @@ public class ReentrantLock implements Lock, java.io.Serializable {
 
     /**
      * Attempts to release this lock.
+     * 尝试释放锁资源
      *
      * <p>If the current thread is the holder of this lock then the hold
      * count is decremented.  If the hold count is now zero then the lock
      * is released.  If the current thread is not the holder of this
-     * lock then {@link IllegalMonitorStateException} is thrown.
+     * lock then {@link IllegalMonitorStateException} is thrown.<br/>
+     * 如果当前线程持有锁，则持有锁计数减少。
+     * 如果当前持有锁计数为零，则释放锁。
+     * 如果当前线程不是此锁的持有者，则抛出{ @link IllegalMonitorStateException}。
      *
      * @throws IllegalMonitorStateException if the current thread does not
      *         hold this lock

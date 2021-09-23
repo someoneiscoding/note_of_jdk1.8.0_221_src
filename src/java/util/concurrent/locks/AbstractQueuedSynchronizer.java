@@ -643,7 +643,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * If head exists, its waitStatus is guaranteed not to be
      * CANCELLED.<br/>
      * 等待队列的头节点，延迟初始化。除初始化外，它仅通过方法 setHead 进行修改。
-     * 注意：如果 head 存在，则保证不会取消其 waitStatus。
+     * 注意：如果 head 存在，则保证其 waitStatus 为 CANCELLED。
      */
     private transient volatile Node head;
 
@@ -1006,7 +1006,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         Thread.currentThread().interrupt();
     }
 
-    /**
+    /**t
      * Convenience method to park and then check if interrupted
      * 阻塞，并检查当前线程是否被中断。<br/>
      * @return {@code true} if interrupted
@@ -1046,7 +1046,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                 final Node p = node.predecessor();
                 // 如果前驱节点为头节点，且获取锁成功
                 if (p == head && tryAcquire(arg)) {
+                    // 将当前节点设置为头节点
                     setHead(node);
+                    // 将原头节点的后继节点指针设置为 null，此时可达性分析无法触及该对象。
                     p.next = null; // help GC
                     failed = false;
                     return interrupted;
@@ -1483,7 +1485,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * first invoking at least once {@link #tryAcquireShared},
      * returning on success.  Otherwise the thread is queued, possibly
      * repeatedly blocking and unblocking, invoking {@link
-     * #tryAcquireShared} until success.
+     * #tryAcquireShared} until success.<br/>
+     * 在共享模式下获取锁资源，忽略中断。通过至少调用一次{@link #tryAcquireShared} 来实现，
+     * 并在成功时返回。否则线程将入队等待，可能会重复阻塞、取消阻塞，调用 {@link #tryAcquireShared} 直到成功。
      *
      * @param arg the acquire argument.  This value is conveyed to
      *            {@link #tryAcquireShared} but is otherwise uninterpreted
