@@ -355,9 +355,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * first in the queue. But being first does not guarantee success;
      * it only gives the right to contend.  So the currently released
      * contender thread may need to rewait.<br/>
-     * 等待队列是 CLH 锁队列的变体。CLH锁通常用于自旋锁。这里，我们使用它来(构建)阻塞同步器，使用的基本策略相同，
+     * 等待队列是 CLH 锁队列的变体。CLH 锁通常用于自旋锁。这里，我们使用它来(构建)阻塞同步器，使用的基本策略相同，
      * 即在节点中保存前一个线程的控制信息。每个节点中的『状态』字段跟踪线程是否应该阻塞。
-     * 前驱节点释放时会发出信号给到该节点。队列的每个节点都充当一个特定的通知监视器，并包含一个等待线程。
+     * 前驱节点释放锁时会发出信号给该节点。队列的每个节点都充当一个特定的通知监视器，并包含一个等待线程。
      * status 字段不控制线程是否被授予锁等。如果线程是队列中的第一个线程，它可能会尝试获取。但第一并不能保证成功；
      * 它只给了我们抗争的权利。因此，当前发布的竞争者线程可能需要重新等待。
      *
@@ -576,9 +576,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * re-acquire. And because conditions can only be exclusive,
          * we save a field by using special value to indicate shared
          * mode.<br/>
-         * 链接到下一个处于 CONDITION|SHARED 状态的节点。因为只有在独占模式下保持时才访问条件队列，
-         * 所以我们只需要一个简单的链表来保持节点在等待条件时的状态。然后将它们转移到队列中以重新获取。
-         * 由于条件只能是独占的，我们通过使用特殊值来表示共享模式来保存字段。
+         * 链接到下一个条件队列中的节点或处于 SHARED 状态的节点。因为只有在独占模式下持有锁时才访问条件队列，
+         * 所以我们只需要一个简单的链表来保持节点在等待条件时的状态。收到 signal 之后，将它们从条件队列
+         * 转移到原任务队列中以重新获取锁资源。由于条件只能是独占的，我们通过使用特殊值保存字段来表示共享模式。
          */
         Node nextWaiter;
 
@@ -913,13 +913,14 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         // predNext is the apparent node to unsplice. CASes below will
         // fail if not, in which case, we lost race vs another cancel
         // or signal, so no further action is necessary.
-        // predNext 即要从队列中移除的节点。
+        // predNext 即要从队列中移除的节点，即入参 node。
         Node predNext = pred.next;
 
         // Can use unconditional write instead of CAS here.
         // After this atomic step, other Nodes can skip past us.
         // Before, we are free of interference from other threads.
-        // 可以在此处使用无条件写入而不是 CAS。在这个原子步骤之后，其他节点可以跳过我们。在这之前，我们不受其他线程的干扰。
+        // 可以在此处使用无条件写入而不是 CAS。
+        // 在这个原子性步骤之后，其他节点可以跳过该入参节点(设置为取消状态后，自动跳过)。在这之前，我们不受其他线程的干扰???。
         node.waitStatus = Node.CANCELLED;
 
         // If we are the tail, remove ourselves.
@@ -976,7 +977,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
             /*
              * Predecessor was cancelled. Skip over predecessors and
              * indicate retry.
-             * 如果前驱节点已经取消获取锁，则跳过该前驱节点，继续向队首方向寻找非取消状态的节点
+             * 如果前驱节点已经取消获取锁，则跳过该前驱节点，(从当前节点所处位置)继续向队首方向寻找非取消状态的节点
              */
             do {
                 node.prev = pred = pred.prev;
@@ -1031,7 +1032,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
     /**
      * Acquires in exclusive uninterruptible mode for thread already in
      * queue. Used by condition wait methods as well as acquire.<br/>
-     * 已在队列中的线程以独占模式不间断获取锁。用于条件等待方法和 acquire。
+     * 在队列中的线程以独占模式不间断获取锁。用于条件等待方法和 acquire。
      *
      * @param node the node
      * @param arg  the acquire argument
@@ -1058,7 +1059,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                     interrupted = true;
             }
         } finally {
-            // 如果前驱节点为空，或获取锁失败，则取消获取锁
+            // 如果前驱节点为空，或锁持有计数溢出等，则取消获取锁
             if (failed)
                 cancelAcquire(node);
         }
