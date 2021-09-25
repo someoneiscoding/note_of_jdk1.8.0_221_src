@@ -251,7 +251,10 @@ public abstract class AbstractQueuedLongSynchronizer
          * conditions. They are then transferred to the queue to
          * re-acquire. And because conditions can only be exclusive,
          * we save a field by using special value to indicate shared
-         * mode.
+         * mode.<br/>
+         * 链接到下一个等待条件的节点，或共享模式的节点。因为只有在独占模式下持有锁才访问条件队列，
+         * 所以我们只需要将等待条件的队列维护在一个简单的(单向)链表即可。然后将它们转移到阻塞队列中以等待重新获取锁。
+         * 由于 conditions 只能是独占的，我们通过使用特殊值来表示共享模式来保存字段。
          */
         Node nextWaiter;
 
@@ -1682,24 +1685,41 @@ public abstract class AbstractQueuedLongSynchronizer
          * signals. It traverses all nodes rather than stopping at a
          * particular target to unlink all pointers to garbage nodes
          * without requiring many re-traversals during cancellation
-         * storms.
+         * storms.<br/>
+         * 从条件队列中移除已取消状态的等待节点。仅在持有锁时调用。
+         * 当在条件等待期间被取消等待时，以及在 LastWaiter 被取消时插入新的等待节点时，调用此函数。
+         * 调用该方法来避免在没有信号的时产生的垃圾(无效节点)遗留。因此，即使它可能需要一个完整的遍历，
+         * 也只有在没有信号的情况下发生超时或取消等待时才会起作用。它遍历所有节点，而不是在特定目标处停止，
+         * 以移除所有指向垃圾节点的指针，而无需在取消风暴期间多次重新遍历。
          */
         private void unlinkCancelledWaiters() {
             Node t = firstWaiter;
             Node trail = null;
             while (t != null) {
+                // 从头节点开始向后遍历，此处先获取下一个节点
                 Node next = t.nextWaiter;
+                // 如果该节点的状态不为 CONDITION，则移除该节点
                 if (t.waitStatus != Node.CONDITION) {
+                    // 移除该节点
                     t.nextWaiter = null;
-                    if (trail == null)
+                    // 如果前 N 个节点的都处于取消状态，则头节点改为第一个 CONDITION 状态的节点
+                    if (trail == null){
                         firstWaiter = next;
-                    else
+                    }
+                    else{
+                        // 将上一个 CONDITION 节点的 nextWaiter 置为 next 节点。两段链表重新组合为一个链表
                         trail.nextWaiter = next;
-                    if (next == null)
+                    }
+                    // 如果当前节点为尾节点，给 lastWaiter 赋值。下一次 t != null 为 false，遍历结束。
+                    if (next == null){
                         lastWaiter = trail;
+                    }
                 }
-                else
+                // 非 CONDITION 则直接进行下一个节点的状态检查
+                else{
                     trail = t;
+                }
+                // 将当前节点赋值为下一个节点，进行下一次遍历
                 t = next;
             }
         }
