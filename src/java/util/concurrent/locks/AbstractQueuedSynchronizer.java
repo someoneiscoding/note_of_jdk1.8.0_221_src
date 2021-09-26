@@ -1878,9 +1878,13 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * @return true if is reacquiring
      */
     final boolean isOnSyncQueue(Node node) {
+        // node 在条件等待队列或 node 为头节点(或 node 为条件等待节点)，返回 false
         if (node.waitStatus == Node.CONDITION || node.prev == null)
             return false;
-        if (node.next != null) // If has successor, it must be on queue
+
+        // If has successor, it must be on queue
+        // 如果 node 有后继节点，则说明该节点肯定在同步等待队列中
+        if (node.next != null)
             return true;
         /*
          * node.prev can be non-null, but not yet on queue because
@@ -1888,14 +1892,18 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * traverse from tail to make sure it actually made it.  It
          * will always be near the tail in calls to this method, and
          * unless the CAS failed (which is unlikely), it will be
-         * there, so we hardly ever traverse much.
+         * there, so we hardly ever traverse much.<br/>
+         * node.prev 可以不为 null，且同事不在队列中，因为将其放置在队列中的 CAS 可能会失败。
+         * 所以我们必须从尾节点开始检查，以确保它真的入队成功。在调用此方法时，它总是在尾部附近，
+         * 除非CAS失败???（这是不可能的），否则它将在那里，因此我们几乎不会遍历太多。
          */
         return findNodeFromTail(node);
     }
 
     /**
      * Returns true if node is on sync queue by searching backwards from tail.
-     * Called only when needed by isOnSyncQueue.
+     * Called only when needed by isOnSyncQueue.<br/>
+     * 通过从尾部向队首方向遍历，如果节点位于同步队列上，则返回true。仅在 isOnSyncQueue 需要时调用。
      *
      * @return true if present
      */
@@ -1940,7 +1948,10 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
 
     /**
      * Transfers node, if necessary, to sync queue after a cancelled wait.
-     * Returns true if thread was cancelled before being signalled.
+     * Returns true if thread was cancelled before being signalled.<br/>
+     * 如果线程在条件等待队列中被中断，则将该节点的 waitStatus 从条件等待状态改为 0，初始默认状态。
+     * 并将该节点转移到同步等待队列，返回 true。
+     * 如果 waitStatus 修改失败，则
      *
      * @param node the node
      * @return true if cancelled before the node was signalled
@@ -1954,7 +1965,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * If we lost out to a signal(), then we can't proceed
          * until it finishes its enq().  Cancelling during an
          * incomplete transfer is both rare and transient, so just
-         * spin.
+         * spin.。<br/>
+         * 如果我们输给了signal()???，那么在它完成 enq() 之前我们无法继续。
+         * 从条件等待队列转移到同步等待队列过程中被取消的情况既罕见又短暂，所以只需自旋即可，等待转移完成 返回 false。
          */
         while (!isOnSyncQueue(node))
             Thread.yield();
@@ -2276,28 +2289,29 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         private static final int REINTERRUPT = 1;
         /**
          * Mode meaning to throw InterruptedException on exit from wait
+         * 该模式意味着退出等待时抛出 InterruptedException
          */
         private static final int THROW_IE = -1;
 
         /**
          * Checks for interrupt, returning THROW_IE if interrupted
          * before signalled, REINTERRUPT if after signalled, or
-         * 0 if not interrupted.
+         * 0 if not interrupted.<br/>
+         * 检查中断，如果在发出信号之前中断，返回 THROW_IE(-1)；
+         * 如果在发出信号之后重新中断，返回 REINTERRUPT(1)，
+         * 如果未中断，返回0。
          */
         private int checkInterruptWhileWaiting(Node node) {
             return Thread.interrupted() ?
-                    (transferAfterCancelledWait(node) ? THROW_IE : REINTERRUPT) :
-                    0;
+                    (transferAfterCancelledWait(node) ? THROW_IE : REINTERRUPT) : 0;
         }
 
         /**
          * Throws InterruptedException, reinterrupts current thread, or
          * does nothing, depending on mode.
          */
-        private void reportInterruptAfterWait(int interruptMode)
-                throws InterruptedException {
-            if (interruptMode == THROW_IE)
-                throw new InterruptedException();
+        private void reportInterruptAfterWait(int interruptMode) throws InterruptedException {
+            if (interruptMode == THROW_IE) throw new InterruptedException();
             else if (interruptMode == REINTERRUPT)
                 selfInterrupt();
         }
@@ -2318,13 +2332,14 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         public final void await() throws InterruptedException {
             if (Thread.interrupted())
                 throw new InterruptedException();
-            // 条件等待队列新增节点
+            // 1.条件等待队列新增节点
             Node node = addConditionWaiter();
-            // 完全释放锁资源，并唤醒后继节点
+            // 2.完全释放锁资源，并唤醒后继节点，返回原锁持有计数
             int savedState = fullyRelease(node);
             int interruptMode = 0;
             while (!isOnSyncQueue(node)) {
                 LockSupport.park(this);
+                // 如果线程被中断
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
             }
