@@ -457,7 +457,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
 
         /**
          * waitStatus value to indicate successor's thread needs unparking
-         * waitStatus，用于指示后续获取锁的线程需要 unparking
+         * waitStatus，用于指示后继节点的线程需要 unparking
          */
         static final int SIGNAL = -1;
 
@@ -712,7 +712,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * 节点入队，如果是首次调用该方法，则初始化队列。
      *
      * @param node the node to insert
-     * @return node's predecessor
+     * @return node's predecessor| node 的前驱节点，即插入前的尾节点
      */
     private Node enq(final Node node) {
         for (; ; ) {
@@ -1922,7 +1922,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
     /**
      * Transfers a node from a condition queue onto sync queue.
      * Returns true if successful.
-     *
+     * 将指定节点从条件等待队列转移到同步等待队列，如果成功，则返回 true。
      * @param node the node
      * @return true if successfully transferred (else the node was
      * cancelled before signal)
@@ -1930,6 +1930,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
     final boolean transferForSignal(Node node) {
         /*
          * If cannot change waitStatus, the node has been cancelled.
+         * 如果 CAS 将节点的 waitStatus 从 CONDITION 置为 0，则说明该线程在收到信号前，被中断取消
          */
         if (!compareAndSetWaitStatus(node, Node.CONDITION, 0))
             return false;
@@ -1938,10 +1939,13 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * Splice onto queue and try to set waitStatus of predecessor to
          * indicate that thread is (probably) waiting. If cancelled or
          * attempt to set waitStatus fails, wake up to resync (in which
-         * case the waitStatus can be transiently and harmlessly wrong).
+         * case the waitStatus can be transiently and harmlessly wrong).<br/>
+         * 将指定节点插入到同步等待队列中，并尝试设置前驱节点线程的 waitStatus 为 SIGNAL，以表明线程（可能）正在等待。
+         * 如果前驱节点被取消或 CAS 设置 waitStatus 失败，则唤醒以重新同步（在这种情况下，waitStatus 可能会暂时错误，蛋不会造成任何数据异常）。
          */
         Node p = enq(node);
         int ws = p.waitStatus;
+        // ??? 前驱节点为取消状态则直接唤醒 node 的线程
         if (ws > 0 || !compareAndSetWaitStatus(p, ws, Node.SIGNAL))
             LockSupport.unpark(node.thread);
         return true;
@@ -2146,7 +2150,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         /**
          * Removes and transfers nodes until hit non-cancelled one or
          * null. Split out from signal in part to encourage compilers
-         * to inline the case of no waiters.
+         * to inline the case of no waiters.<br/>
+         * 移除或转移节点至同步等待队列，直到遇到非取消状态的节点或 null(遍历结束)。
+         * 从信号中分离出来，部分是为了鼓励编译器在没有等待者的情况下内联???。
          *
          * @param first (non-null) the first node on condition queue
          */
@@ -2155,8 +2161,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                 if ((firstWaiter = first.nextWaiter) == null)
                     lastWaiter = null;
                 first.nextWaiter = null;
-            } while (!transferForSignal(first) &&
-                    (first = firstWaiter) != null);
+            }
+            // 如果 first 节点被取消等待，且 firstWaiter!=null，，则将该节点从条件等待队列中移除；
+            while (!transferForSignal(first) && (first = firstWaiter) != null);
         }
 
         /**
@@ -2226,16 +2233,19 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
         /**
          * Moves the longest-waiting thread, if one exists, from the
          * wait queue for this condition to the wait queue for the
-         * owning lock.
+         * owning lock.<br/>
+         * 将等待时间最长的线程（如果存在）从该条件等待队列移动到拥有锁的等待队列。
          *
          * @throws IllegalMonitorStateException if {@link #isHeldExclusively}
          *                                      returns {@code false}
          */
         public final void signal() {
+            // 如果当前线程未持有锁，则抛出异常
             if (!isHeldExclusively())
                 throw new IllegalMonitorStateException();
             Node first = firstWaiter;
             if (first != null)
+                // 将非空节点转移至同步等待队列，将其 waitStatus 置为 0，并将其前驱节点 waitStatus 置为 SIGNAL。
                 doSignal(first);
         }
 
@@ -2324,12 +2334,12 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * 可中断条件等待
          * <ol>
          * <li> If current thread is interrupted, throw InterruptedException. 如果当前线程被终端，抛出异常
-         * <li> Save lock state returned by {@link #getState}.
+         * <li> Save lock state returned by {@link #getState}. 保存当前线程所持有计数
          * <li> Invoke {@link #release} with saved state as argument,
-         * throwing IllegalMonitorStateException if it fails.
-         * <li> Block until signalled or interrupted.
+         * throwing IllegalMonitorStateException if it fails. 释放当前持有的所有锁数量，失败则抛异常
+         * <li> Block until signalled or interrupted. 阻塞线程，直至收到信号或线程被中断
          * <li> Reacquire by invoking specialized version of
-         * {@link #acquire} with saved state as argument.
+         * {@link #acquire} with saved state as argument. 重新尝试获取原持有数量的锁
          * <li> If interrupted while blocked in step 4, throw InterruptedException.
          * </ol>
          */
@@ -2377,8 +2387,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * <li> If interrupted while blocked in step 4, throw InterruptedException.
          * </ol>
          */
-        public final long awaitNanos(long nanosTimeout)
-                throws InterruptedException {
+        public final long awaitNanos(long nanosTimeout) throws InterruptedException {
             if (Thread.interrupted())
                 throw new InterruptedException();
             Node node = addConditionWaiter();
@@ -2511,8 +2520,11 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          *                                      returns {@code false}
          */
         protected final boolean hasWaiters() {
+            // 如果当前线程未持有锁，则抛出异常
             if (!isHeldExclusively())
                 throw new IllegalMonitorStateException();
+
+            // 从队首向队尾方向查找 waitStatus 为 CONDITION 的节点，找到则返回 true；否则返回 false。
             for (Node w = firstWaiter; w != null; w = w.nextWaiter) {
                 if (w.waitStatus == Node.CONDITION)
                     return true;
