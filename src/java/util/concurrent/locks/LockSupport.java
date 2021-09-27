@@ -144,26 +144,28 @@ public class LockSupport {
     /**
      * Disables the current thread for thread scheduling purposes unless the
      * permit is available.
-     *
+     * 阻塞当前线程，除非当前有许可。
      * <p>If the permit is available then it is consumed and the call returns
      * immediately; otherwise
      * the current thread becomes disabled for thread scheduling
-     * purposes and lies dormant until one of three things happens:
+     * purposes and lies dormant until one of three things happens:<br/>
+     * 如果许可证可用，则该许可会被消耗，方法立即返回；否则，出于线程调度目的，当前线程将被阻塞，并处于休眠状态，直到发生以下三种情况之一：
      *
      * <ul>
      * <li>Some other thread invokes {@link #unpark unpark} with the
-     * current thread as the target; or
+     * current thread as the target; 其他线程调用 unpark(thread) 方法；or
      *
      * <li>Some other thread {@linkplain Thread#interrupt interrupts}
-     * the current thread; or
+     * the current thread; 其他线程调用 thread.interrupt() 方法or
      *
-     * <li>The call spuriously (that is, for no reason) returns.
+     * <li>The call spuriously (that is, for no reason) returns.调用错误
      * </ul>
      *
      * <p>This method does <em>not</em> report which of these caused the
      * method to return. Callers should re-check the conditions which caused
      * the thread to park in the first place. Callers may also determine,
-     * for example, the interrupt status of the thread upon return.
+     * for example, the interrupt status of the thread upon return.<br/>
+     * 此方法不报告导致方法返回的原因。调用方应首先重新检查导致线程停止的条件。调用方还可以在返回时确定线程的中断状态。
      *
      * @param blocker the synchronization object responsible for this
      *        thread parking

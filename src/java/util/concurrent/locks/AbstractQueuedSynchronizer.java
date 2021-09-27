@@ -1032,7 +1032,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
     /**
      * Acquires in exclusive uninterruptible mode for thread already in
      * queue. Used by condition wait methods as well as acquire.<br/>
-     * 在队列中的线程以独占模式不间断获取锁。用于条件等待方法和 acquire。
+     * 在队列中的线程以独占模式不间断获取锁。用于条件等待 {@link ConditionObject#await()} 和 acquire。
      *
      * @param node the node
      * @param arg  the acquire argument
@@ -1054,7 +1054,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                     failed = false;
                     return interrupted;
                 }
-                // 前驱节点正在等待 SIGNAL，且当前线程被中断
+                // 前驱节点正在等待 SIGNAL，则 park-阻塞 当前线程，并判断当前线程是否被中断被中断
                 if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt())
                     interrupted = true;
             }
@@ -1873,12 +1873,13 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
     /**
      * Returns true if a node, always one that was initially placed on
      * a condition queue, is now waiting to reacquire on sync queue.<br/>
-     * 如果一个节点（始终是最初放置在条件队列中的节点）正在等待重新获取同步队列，则返回true。
+     * 如果一个节点本来在条件等待队列中，现在在同步等待队列中等待获取锁资源，则返回 true。
      * @param node the node
      * @return true if is reacquiring
      */
     final boolean isOnSyncQueue(Node node) {
-        // node 在条件等待队列或 node 为头节点(或 node 为条件等待节点)，返回 false
+        // node 还在条件等待队列(在条件等待队列中因被中断而取消等待，会被重新转移到同步等待队列，
+        // 且 waitStatus 会被置为 0:初始状态)或 node 前驱节点为 null(即该节点还未重新假如同步等待队列)，返回 false
         if (node.waitStatus == Node.CONDITION || node.prev == null)
             return false;
 
@@ -1893,9 +1894,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * will always be near the tail in calls to this method, and
          * unless the CAS failed (which is unlikely), it will be
          * there, so we hardly ever traverse much.<br/>
-         * node.prev 可以不为 null，且同事不在队列中，因为将其放置在队列中的 CAS 可能会失败。
-         * 所以我们必须从尾节点开始检查，以确保它真的入队成功。在调用此方法时，它总是在尾部附近，
-         * 除非CAS失败???（这是不可能的），否则它将在那里，因此我们几乎不会遍历太多。
+         * node.prev 可以不为 null，且同时不在队列中，因为入队方法(enq#compareAndSetTail(t, node))中的 CAS 可能会失败。
+         * 所以我们必须从尾节点开始检查，以确保它真的入队成功。在调用此方法时，它总是在尾部附近(因为该节点刚刚被转移到同步等待队列)，
+         * 除非 CAS 失败（不大可能），否则它将在一直在队尾(但 tail 节点不是 node)，因此应该不会遍历太多节点。
          */
         return findNodeFromTail(node);
     }
@@ -1957,6 +1958,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * @return true if cancelled before the node was signalled
      */
     final boolean transferAfterCancelledWait(Node node) {
+        // 先将该节点的状态置为 0 初始状态，然后重新入队
         if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
             enq(node);
             return true;
@@ -2285,6 +2287,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
 
         /**
          * Mode meaning to reinterrupt on exit from wait
+         * 退出时重新中断
          */
         private static final int REINTERRUPT = 1;
         /**
@@ -2318,8 +2321,9 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
 
         /**
          * Implements interruptible condition wait.
+         * 可中断条件等待
          * <ol>
-         * <li> If current thread is interrupted, throw InterruptedException.
+         * <li> If current thread is interrupted, throw InterruptedException. 如果当前线程被终端，抛出异常
          * <li> Save lock state returned by {@link #getState}.
          * <li> Invoke {@link #release} with saved state as argument,
          * throwing IllegalMonitorStateException if it fails.
@@ -2337,16 +2341,25 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
             // 2.完全释放锁资源，并唤醒后继节点，返回原锁持有计数
             int savedState = fullyRelease(node);
             int interruptMode = 0;
+            // 3.循环检查新增的条件等待队列是否因被中断而转移到同步等待队列中。
+            // 如果未被中断，则该节点会一直在条件等待队列中，即一直阻塞在该循环；
+            // 如果被中断，则将该线程所在节点从条件等待队列转移到同步等待队列，并跳出循环
             while (!isOnSyncQueue(node)) {
+                // 阻塞当前线程
                 LockSupport.park(this);
-                // 如果线程被中断
+                // 如果线程被中断，将该线程所在节点从条件等待队列转移到同步等待队列
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
             }
+            // 3.尝试恢复到转移到条件等待队列之前的状态，即在同步等待队列中等待获取 savedState 次锁
             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
                 interruptMode = REINTERRUPT;
+
+            // node 节点持有的线程已被取消等待，取消等待前如果有新增的条件等待节点，则需要将该节点从同步等待节点移除
             if (node.nextWaiter != null) // clean up if cancelled
                 unlinkCancelledWaiters();
+
+            // 如果 interruptMode==THROW_IE，则抛异常；==REINTERRUPT，则再次中断当前线程
             if (interruptMode != 0)
                 reportInterruptAfterWait(interruptMode);
         }
