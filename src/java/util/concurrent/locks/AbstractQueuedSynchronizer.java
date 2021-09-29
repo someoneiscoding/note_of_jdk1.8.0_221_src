@@ -484,7 +484,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * first indicate they need a signal,
          * then retry the atomic acquire, and then,
          * on failure, block.<br/>
-         * 此节点的后续节点已（或即将）被阻止（通过park），因此当前节点
+         * 此节点的后继节点已（或即将）被阻止（通过park），因此当前节点
          * 在释放或取消时必须取消其后续节点的连接。为了避免竞争，acquire 方法
          * 必须首先指示它们需要等待信号，然后重试原子操作 acquire，然后在失败时阻塞。
          * CANCELLED:  This node is cancelled due to timeout or interrupt.
@@ -1945,8 +1945,11 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          */
         Node p = enq(node);
         int ws = p.waitStatus;
-        // ??? 前驱节点为取消状态则直接唤醒 node 的线程
-        if (ws > 0 || !compareAndSetWaitStatus(p, ws, Node.SIGNAL))
+        // node 前驱节点为取消状态
+        if (ws > 0 ||
+                // 或 ws 原本 =0，此时线程被取消
+                !compareAndSetWaitStatus(p, ws, Node.SIGNAL))
+            // 则 unpark
             LockSupport.unpark(node.thread);
         return true;
     }
@@ -1956,13 +1959,14 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      * Returns true if thread was cancelled before being signalled.<br/>
      * 如果线程在条件等待队列中被中断，则将该节点的 waitStatus 从条件等待状态改为 0，初始默认状态。
      * 并将该节点转移到同步等待队列，返回 true。
-     * 如果 waitStatus 修改失败，则
+     * 如果 waitStatus 修改失败，则自旋等待节点从条件等待队列成功转移至同步等待队列，并返回 false
      *
      * @param node the node
      * @return true if cancelled before the node was signalled
      */
     final boolean transferAfterCancelledWait(Node node) {
         // 先将该节点的状态置为 0 初始状态，然后重新入队
+        // 如果阻塞等待条件满足期间，线程取消等待或收到 signal，则修改失败。这两种情况都会将该节点转移至同步等待队列
         if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
             enq(node);
             return true;
@@ -1972,7 +1976,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * until it finishes its enq().  Cancelling during an
          * incomplete transfer is both rare and transient, so just
          * spin.。<br/>
-         * 如果我们输给了signal()???，那么在它完成 enq() 之前我们无法继续。
+         * 如果收到了 signal，那需等待节点成功转移至同步等待队列
          * 从条件等待队列转移到同步等待队列过程中被取消的情况既罕见又短暂，所以只需自旋即可，等待转移完成 返回 false。
          */
         while (!isOnSyncQueue(node))
