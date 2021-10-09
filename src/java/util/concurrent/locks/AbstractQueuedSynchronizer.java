@@ -783,7 +783,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * to clear in anticipation of signalling.  It is OK if this
          * fails or if status is changed by waiting thread.
          * 如果 waitStatus 小于 0(比如等待信号唤醒)，则置为默认状态 0. 如果唤醒失败
-         * 或 waitStatus 有更新，也没问题。
+         * 或 waitStatus 有更新导致 CAS 失败，也没啥问题。
          */
         int ws = node.waitStatus;
         if (ws < 0)
@@ -1879,7 +1879,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
      */
     final boolean isOnSyncQueue(Node node) {
         // node 还在条件等待队列(在条件等待队列中因被中断而取消等待，会被重新转移到同步等待队列，
-        // 且 waitStatus 会被置为 0:初始状态)或 node 前驱节点为 null(即该节点还未重新假如同步等待队列)，返回 false
+        // 且 waitStatus 会被置为 0:初始状态)或 node 前驱节点为 null(即该节点还未重新加入同步等待队列)，返回 false
         if (node.waitStatus == Node.CONDITION || node.prev == null)
             return false;
 
@@ -1930,7 +1930,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
     final boolean transferForSignal(Node node) {
         /*
          * If cannot change waitStatus, the node has been cancelled.
-         * 如果 CAS 将节点的 waitStatus 从 CONDITION 置为 0，则说明该线程在收到信号前，被中断取消
+         * 如果 CAS 将节点的 waitStatus 从 CONDITION 置为 0 失败，则说明该线程在收到信号前，被中断取消
          */
         if (!compareAndSetWaitStatus(node, Node.CONDITION, 0))
             return false;
@@ -1941,7 +1941,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * attempt to set waitStatus fails, wake up to resync (in which
          * case the waitStatus can be transiently and harmlessly wrong).<br/>
          * 将指定节点插入到同步等待队列中，并尝试设置前驱节点线程的 waitStatus 为 SIGNAL，以表明线程（可能）正在等待。
-         * 如果前驱节点被取消或 CAS 设置 waitStatus 失败，则唤醒以重新同步（在这种情况下，waitStatus 可能会暂时错误，蛋不会造成任何数据异常）。
+         * 如果前驱节点被取消或 CAS 设置 waitStatus 失败，则唤醒以重新同步（在这种情况下，waitStatus 可能会暂时错误，但不会造成任何数据异常）。
          */
         Node p = enq(node);
         int ws = p.waitStatus;
@@ -2198,11 +2198,10 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
          * particular target to unlink all pointers to garbage nodes
          * without requiring many re-traversals during cancellation
          * storms.
-         * 从条件队列中移除已取消状态的等待节点。仅在持有锁时调用。
+         * 从条件等待队列中移除已取消状态的等待节点。仅在持有锁时调用。
          * 当在条件等待期间被取消等待时，以及在 LastWaiter 被取消时插入新的等待节点时，调用此函数。
-         * 调用该方法来避免在没有信号的时产生的垃圾(无效节点)遗留。因此，即使它可能需要一个完整的遍历，
-         * 也只有在没有信号的情况下发生超时或取消等待时才会起作用。它遍历所有节点，而不是在特定目标处停止，
-         * 以移除所有指向垃圾节点的指针，而无需在取消风暴期间多次重新遍历。
+         * 调用该方法来避免在没有获取到信号时产生遗留垃圾(无效节点)。因此，只有在没有信号的情况下发生超时或取消等待时才可能会完整遍历整个条件等待队列。
+         * 该方法遍历所有节点，而非在特定目标处停止，以移除所有指向垃圾节点的指针，避免取消风暴期间多次重新遍历。
          */
         private void unlinkCancelledWaiters() {
             Node t = firstWaiter;
@@ -2366,6 +2365,7 @@ public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchron
                     break;
             }
             // 3.尝试恢复到转移到条件等待队列之前的状态，即在同步等待队列中等待获取 savedState 次锁
+            // 阻塞直到获取锁资源
             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
                 interruptMode = REINTERRUPT;
 
